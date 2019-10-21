@@ -21,6 +21,8 @@ jobs:
         python_version: 3.5.x
       python36:
         python_version: 3.6.x
+      python37:
+        python_version: 3.7.x
   steps:
   - script: git config --global core.autoCRLF false
     displayName: "Disable git autoCRLF"
