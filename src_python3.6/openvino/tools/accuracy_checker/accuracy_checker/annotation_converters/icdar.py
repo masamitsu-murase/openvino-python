@@ -22,6 +22,7 @@ from .format_converter import  FileBasedAnnotationConverter, DirectoryBasedAnnot
 
 class ICDAR15DetectionDatasetConverter(DirectoryBasedAnnotationConverter):
     __provider__ = 'icdar15_detection'
+    annotation_types = (TextDetectionAnnotation, )
 
     def convert(self):
         annotations = []
@@ -48,6 +49,7 @@ class ICDAR15DetectionDatasetConverter(DirectoryBasedAnnotationConverter):
 
 class ICDAR13RecognitionDatasetConverter(FileBasedAnnotationConverter):
     __provider__ = 'icdar13_recognition'
+    annotation_types = (CharacterRecognitionAnnotation, )
 
     supported_symbols = '0123456789abcdefghijklmnopqrstuvwxyz'
 

@@ -19,22 +19,29 @@ import numpy as np
 from ..config import PathField
 from ..representation import FacialLandmarksAnnotation
 from ..utils import convert_bboxes_xywh_to_x1y1x2y2, read_csv
-from .format_converter import BaseFormatConverter, BaseFormatConverterConfig
+
+from .format_converter import BaseFormatConverter
 
 
-class LandmarksRegressionConfig(BaseFormatConverterConfig):
-    landmarks_csv_file = PathField()
-    bbox_csv_file = PathField(optional=True)
+class VGGFaceRegressionConverter(BaseFormatConverter):
+    __provider__ = 'vgg_face'
+    annotation_types = (FacialLandmarksAnnotation, )
 
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'landmarks_csv_file': PathField(description="Path to csv file with coordinates of landmarks points."),
+            'bbox_csv_file': PathField(
+                optional=True, description="Path to cvs file which contains bounding box coordinates for faces."
+            )
+        })
 
-class LandmarksRegression(BaseFormatConverter):
-    __provider__ = 'landmarks_regression'
-
-    _config_validator_type = LandmarksRegressionConfig
+        return parameters
 
     def configure(self):
-        self.landmarks_csv = self.config['landmarks_csv_file']
-        self.bbox_csv = self.config.get('bbox_csv_file')
+        self.landmarks_csv = self.get_value_from_config('landmarks_csv_file')
+        self.bbox_csv = self.get_value_from_config('bbox_csv_file')
 
     def convert(self):
         annotations = []
@@ -61,4 +68,5 @@ class LandmarksRegression(BaseFormatConverter):
         meta = {
             'label_map': {0: 'Left Eye', 1: 'Right Eye', 2: 'Nose', 3: 'Left Mouth Corner', 4: 'Right Mouth Corner'}
         }
+
         return annotations, meta

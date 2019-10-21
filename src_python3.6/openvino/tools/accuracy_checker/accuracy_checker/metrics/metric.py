@@ -20,18 +20,7 @@ from ..utils import is_single_metric_source, get_supported_representations
 from ..presenters import BasePresenter
 from ..config import ConfigValidator, NumberField, StringField
 from ..dependency import ClassProvider
-from ..utils import zipped_transform
-
-
-class BaseMetricConfig(ConfigValidator):
-    type = StringField()
-    name = StringField(optional=True)
-    reference = NumberField(optional=True)
-    threshold = NumberField(min_value=0, optional=True)
-    presenter = StringField(choices=BasePresenter.providers, optional=True)
-    label_map = StringField(optional=True)
-    prediction_source = StringField(optional=True)
-    annotation_source = StringField(optional=True)
+from ..utils import zipped_transform, get_parameter_value_from_config
 
 
 class Metric(ClassProvider):
@@ -43,6 +32,8 @@ class Metric(ClassProvider):
 
     annotation_types = ()
     prediction_types = ()
+
+    description = ""
 
     def __init__(self, config, dataset, name=None, state=None):
         self.config = config
@@ -67,6 +58,37 @@ class Metric(ClassProvider):
     def __call__(self, *args, **kwargs):
         return self.submit_all(*args, **kwargs)
 
+    @classmethod
+    def parameters(cls):
+        return {
+            'type': StringField(
+                description="Metric type.", default=cls.__provider__ if hasattr(cls, '__provider__') else None),
+            'name': StringField(optional=True, description="Metric name."),
+            'reference': NumberField(
+                optional=True,
+                description="Reference field for metric, if you want calculated metric tested against specific value "
+                            "(i.e. reported in canonical paper)."
+            ),
+            'threshold': NumberField(
+                optional=True, min_value=0,
+                description="Acceptable threshold for metric deviation from reference value."
+            ),
+            'presenter': StringField(optional=True, choices=BasePresenter.providers, description="Presenter."),
+            'annotation_source': StringField(
+                optional=True,
+                description="Annotation identifier in case when complicated representation located "
+                            "in representation container is used."
+            ),
+            'prediction_source': StringField(
+                optional=True,
+                description="Output layer name in case when complicated representation located "
+                            "in representation container is used."
+            )
+        }
+
+    def get_value_from_config(self, key):
+        return get_parameter_value_from_config(self.config, self.parameters(), key)
+
     def submit(self, annotation, prediction):
         self.update(annotation, prediction)
 
@@ -90,8 +112,9 @@ class Metric(ClassProvider):
         """
         Validate that metric entry meets all configuration structure requirements.
         """
-
-        BaseMetricConfig(self.name, on_extra_argument=BaseMetricConfig.ERROR_ON_EXTRA_ARGUMENT).validate(self.config)
+        ConfigValidator(
+            self.name, on_extra_argument=ConfigValidator.ERROR_ON_EXTRA_ARGUMENT, fields=self.parameters()
+        ).validate(self.config)
 
     def _update_state(self, fn, state_key, default_factory=None):
         iter_key = "{}_global_it".format(state_key)
@@ -107,7 +130,13 @@ class Metric(ClassProvider):
 
     def _resolve_representation_containers(self, annotation, prediction):
         def get_resolve_subject(representation, source=None):
-            if not isinstance(representation, ContainerRepresentation):
+            def is_container(representation):
+                representation_parents = type(representation).__mro__
+                representation_parents_names = [parent.__name__ for parent in representation_parents]
+
+                return ContainerRepresentation.__name__ in representation_parents_names
+
+            if not is_container(representation):
                 return representation
 
             if not source:

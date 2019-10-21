@@ -23,12 +23,8 @@ from ..representation import (
     BrainTumorSegmentationAnnotation,
     BrainTumorSegmentationPrediction
 )
-from .metric import PerImageEvaluationMetric, BaseMetricConfig
+from .metric import PerImageEvaluationMetric
 from ..utils import finalize_metric_result
-
-
-class SegmentationMetricConfig(BaseMetricConfig):
-    use_argmax = BoolField(optional=True)
 
 
 class SegmentationMetric(PerImageEvaluationMetric):
@@ -37,17 +33,22 @@ class SegmentationMetric(PerImageEvaluationMetric):
 
     CONFUSION_MATRIX_KEY = 'segmentation_confusion_matrix'
 
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'use_argmax': BoolField(
+                optional=True, default=True, description="Allows to use argmax for prediction mask."
+            )
+        })
+
+        return parameters
+
     def evaluate(self, annotations, predictions):
         raise NotImplementedError
 
-    def validate_config(self):
-        config_validator = SegmentationMetricConfig(
-            'SemanticSegmentation_config', SegmentationMetricConfig.ERROR_ON_EXTRA_ARGUMENT
-        )
-        config_validator.validate(self.config)
-
     def configure(self):
-        self.use_argmax = self.config.get('use_argmax', True)
+        self.use_argmax = self.get_value_from_config('use_argmax')
 
     def update(self, annotation, prediction):
         n_classes = len(self.dataset.labels)
@@ -56,8 +57,7 @@ class SegmentationMetric(PerImageEvaluationMetric):
         def update_confusion_matrix(confusion_matrix):
             label_true = annotation.mask.flatten()
             label_pred = prediction_mask.flatten()
-
-            mask = (label_true >= 0) & (label_true < n_classes)
+            mask = (label_true >= 0) & (label_true < n_classes) & (label_pred < n_classes) & (label_pred >= 0)
             hist = np.bincount(n_classes * label_true[mask].astype(int) + label_pred[mask], minlength=n_classes ** 2)
             hist = hist.reshape(n_classes, n_classes)
             confusion_matrix += hist
@@ -137,3 +137,65 @@ class SegmentationDSCAcc(PerImageEvaluationMetric):
 
     def evaluate(self, annotations, predictions):
         return sum(self.overall_metric) / len(self.overall_metric)
+
+
+class SegmentationDIAcc(PerImageEvaluationMetric):
+    __provider__ = 'dice_index'
+    annotation_types = (BrainTumorSegmentationAnnotation,)
+    prediction_types = (BrainTumorSegmentationPrediction,)
+
+    overall_metric = []
+
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'mean': BoolField(optional=True, default=True, description='Allows calculation mean value.'),
+            'median': BoolField(optional=True, default=False, description='Allows calculation median value.')
+        })
+
+        return parameters
+
+    def configure(self):
+        self.mean = self.get_value_from_config('mean')
+        self.median = self.get_value_from_config('median')
+
+        labels = self.dataset.labels if self.dataset.metadata else ['overall']
+        self.classes = len(labels)
+
+        names_mean = ['mean@{}'.format(name) for name in labels] if self.mean else []
+        names_median = ['median@{}'.format(name) for name in labels] if self.median else []
+        self.meta['names'] = names_mean + names_median
+
+        self.meta['calculate_mean'] = False
+
+    def update(self, annotation, prediction):
+        result = np.zeros(shape=self.classes)
+
+        annotation_data = annotation.mask
+        prediction_data = np.argmax(prediction.mask, axis=0)
+
+        for c in range(1, self.classes):
+            annotation_data_ = (annotation_data == c)
+            prediction_data_ = (prediction_data == c)
+
+            intersection_count = np.logical_and(annotation_data_, prediction_data_).sum()
+            union_count = annotation_data_.sum() + prediction_data_.sum()
+            if union_count > 0:
+                result[c] += 2.0*intersection_count / union_count
+
+        annotation_data_ = (annotation_data > 0)
+        prediction_data_ = (prediction_data > 0)
+
+        intersection_count = np.logical_and(annotation_data_, prediction_data_).sum()
+        union_count = annotation_data_.sum() + prediction_data_.sum()
+        if union_count > 0:
+            result[0] += 2.0 * intersection_count / union_count
+
+        self.overall_metric.append(result)
+
+    def evaluate(self, annotations, predictions):
+        mean = np.mean(self.overall_metric, axis=0) if self.mean else []
+        median = np.median(self.overall_metric, axis=0) if self.median else []
+        result = np.concatenate((mean, median))
+        return result

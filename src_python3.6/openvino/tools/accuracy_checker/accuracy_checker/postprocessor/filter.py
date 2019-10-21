@@ -13,26 +13,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
+
 from functools import singledispatch
-from typing import Union
 import numpy as np
 
 from ..config import BaseField, BoolField
 from ..dependency import ClassProvider
-from ..postprocessor.postprocessor import PostprocessorWithSpecificTargets, PostprocessorWithTargetsConfigValidator
+from ..postprocessor.postprocessor import PostprocessorWithSpecificTargets
 from ..representation import (DetectionAnnotation, DetectionPrediction, TextDetectionAnnotation,
                               TextDetectionPrediction, PoseEstimationPrediction, PoseEstimationAnnotation)
 from ..utils import in_interval, polygon_from_points, convert_to_range
-
-
-class FilterConfig(PostprocessorWithTargetsConfigValidator):
-    remove_filtered = BoolField(optional=True)
-
-    def __init__(self, config_uri, **kwargs):
-        super().__init__(config_uri, **kwargs)
-        for functor in BaseFilter.providers:
-            self.fields[functor] = BaseField(optional=True)
-
 
 class FilterPostprocessor(PostprocessorWithSpecificTargets):
     __provider__ = 'filter'
@@ -40,19 +30,32 @@ class FilterPostprocessor(PostprocessorWithSpecificTargets):
     annotation_types = (DetectionAnnotation, TextDetectionAnnotation)
     prediction_types = (DetectionPrediction, TextDetectionPrediction)
 
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'remove_filtered': BoolField(
+                optional=True, default=False,
+                description="Removing filtered data. Annotations support ignoring filtered data without removing"
+                            " as default,in other cases filtered data will be removed automatically."
+            )
+        })
+
+        for functor in BaseFilter.providers:
+            parameters[functor] = BaseField(optional=True, description=functor)
+
+        return parameters
+
     def __init__(self, *args, **kwargs):
         self._filters = []
         self.remove_filtered = False
         super().__init__(*args, **kwargs)
 
-    def validate_config(self):
-        filter_config = FilterConfig(self.__provider__, on_extra_argument=FilterConfig.ERROR_ON_EXTRA_ARGUMENT)
-        filter_config.validate(self.config)
-
     def configure(self):
         config = self.config.copy()
         config.pop('type')
-        self.remove_filtered = config.pop('remove_filtered', False)
+        self.remove_filtered = self.get_value_from_config('remove_filtered')
+        config.pop('remove_filtered', False)
         config.pop('annotation_source', None)
         config.pop('prediction_source', None)
         config.pop('apply_to', None)
@@ -133,10 +136,11 @@ class FilterByHeightRange(BaseFilter):
 
     def apply_filter(self, entry, height_range):
         @singledispatch
-        def filtering(entry_value, height_range_):
+        def filter_func(entry_value, height_range_):
             return []
 
-        @filtering.register(Union[DetectionAnnotation, DetectionPrediction])
+        @filter_func.register(DetectionAnnotation)
+        @filter_func.register(DetectionPrediction)
         def _(entry_value, height_range_):
             filtered = []
             for index, (y_min, y_max) in enumerate(zip(entry_value.y_mins, entry_value.y_maxs)):
@@ -146,7 +150,8 @@ class FilterByHeightRange(BaseFilter):
 
             return filtered
 
-        @filtering.register(Union[TextDetectionAnnotation, TextDetectionPrediction])
+        @filter_func.register(TextDetectionAnnotation)
+        @filter_func.register(TextDetectionPrediction)
         def _(entry_values, height_range_):
             filtered = []
             for index, polygon_points in enumerate(entry_values.points):
@@ -158,7 +163,7 @@ class FilterByHeightRange(BaseFilter):
 
             return filtered
 
-        return filtering(entry, convert_to_range(height_range))
+        return filter_func(entry, convert_to_range(height_range))
 
 
 class FilterByWidthRange(BaseFilter):
@@ -169,10 +174,11 @@ class FilterByWidthRange(BaseFilter):
 
     def apply_filter(self, entry, width_range):
         @singledispatch
-        def filtering(entry_value, width_range_):
+        def filter_func(entry_value, width_range_):
             return []
 
-        @filtering.register(Union[DetectionAnnotation, DetectionPrediction])
+        @filter_func.register(DetectionAnnotation)
+        @filter_func.register(DetectionPrediction)
         def _(entry_value, width_range_):
             filtered = []
             for index, (x_min, x_max) in enumerate(zip(entry_value.x_mins, entry_value.x_maxs)):
@@ -182,7 +188,8 @@ class FilterByWidthRange(BaseFilter):
 
             return filtered
 
-        @filtering.register(Union[TextDetectionAnnotation, TextDetectionPrediction])
+        @filter_func.register(TextDetectionAnnotation)
+        @filter_func.register(TextDetectionPrediction)
         def _(entry_values, width_range_):
             filtered = []
             for index, polygon_points in enumerate(entry_values.points):
@@ -194,7 +201,7 @@ class FilterByWidthRange(BaseFilter):
 
             return filtered
 
-        return filtering(entry, convert_to_range(width_range))
+        return filter_func(entry, convert_to_range(width_range))
 
 
 class FilterByAreaRange(BaseFilter):
@@ -207,11 +214,12 @@ class FilterByAreaRange(BaseFilter):
         area_range = convert_to_range(area_range)
 
         @singledispatch
-        def filtering(entry, area_range):
+        def filter_func(entry, area_range):
             return []
 
-        @filtering.register
-        def _(entry: Union[PoseEstimationAnnotation, PoseEstimationPrediction], area_range):
+        @filter_func.register(PoseEstimationAnnotation)
+        @filter_func.register(PoseEstimationPrediction)
+        def _(entry, area_range):
             filtered = []
             areas = entry.areas
             for area_id, area in enumerate(areas):
@@ -219,15 +227,16 @@ class FilterByAreaRange(BaseFilter):
                     filtered.append(area_id)
             return filtered
 
-        @filtering.register
-        def _(entry: Union[TextDetectionAnnotation, TextDetectionPrediction]):
+        @filter_func.register(TextDetectionAnnotation)
+        @filter_func.register(TextDetectionPrediction)
+        def _(entry, area_range):
             filtered = []
             for index, polygon_points in enumerate(entry.points):
                 if not in_interval(polygon_from_points(polygon_points).area, area_range):
                     filtered.append(index)
             return filtered
 
-        return filtering(entry, area_range)
+        return filter_func(entry, area_range)
 
 
 class FilterEmpty(BaseFilter):

@@ -25,14 +25,9 @@ from ..config import ConfigValidator, StringField
 from ..representation import PoseEstimationPrediction
 
 
-class HumanPoseAdapterConfig(ConfigValidator):
-    type = StringField()
-    part_affinity_fields_out = StringField()
-    keypoints_heatmap_out = StringField()
-
-
 class HumanPoseAdapter(Adapter):
     __provider__ = 'human_pose_estimation'
+    prediction_types = (PoseEstimationPrediction, )
 
     limb_seq = [
         [2, 3], [2, 6], [3, 4], [4, 5], [6, 7], [7, 8], [2, 9], [9, 10], [10, 11], [2, 12], [12, 13],
@@ -43,13 +38,24 @@ class HumanPoseAdapter(Adapter):
         [27, 28], [29, 30], [47, 48], [49, 50], [53, 54], [51, 52], [55, 56], [37, 38], [45, 46]
     ]
 
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'part_affinity_fields_out': StringField(
+                description="Name of output layer with keypoints pairwise relations (part affinity fields)."
+            ),
+            'keypoints_heatmap_out': StringField(description="Name of output layer with keypoints heatmaps."),
+        })
+
+        return parameters
+
     def validate_config(self):
-        human_pose_estimation_config = HumanPoseAdapterConfig('HumanPose_Config')
-        human_pose_estimation_config.validate(self.launcher_config)
+        super().validate_config(on_extra_argument=ConfigValidator.WARN_ON_EXTRA_ARGUMENT)
 
     def configure(self):
-        self.part_affinity_fields = self.launcher_config['part_affinity_fields_out']
-        self.keypoints_heatmap = self.launcher_config['keypoints_heatmap_out']
+        self.part_affinity_fields = self.get_value_from_config('part_affinity_fields_out')
+        self.keypoints_heatmap = self.get_value_from_config('keypoints_heatmap_out')
 
     def process(self, raw, identifiers=None, frame_meta=None):
         result = []
@@ -63,13 +69,15 @@ class HumanPoseAdapter(Adapter):
             heatmap_avg = np.zeros((height, width, 19), dtype=np.float32)
             paf_avg = np.zeros((height, width, 38), dtype=np.float32)
             pad = meta.get('padding', [0, 0, 0, 0])
-            heatmap = np.transpose(np.squeeze(heatmap), (1, 2, 0))
+            transpose_order = (1, 2, 0) if heatmap.shape[0] == 19 else (0, 1, 2)
+
+            heatmap = np.transpose(np.squeeze(heatmap), transpose_order)
             heatmap = cv2.resize(heatmap, (0, 0), fx=8, fy=8, interpolation=cv2.INTER_CUBIC)
             heatmap = heatmap[pad[0]:heatmap.shape[0] - pad[2], pad[1]:heatmap.shape[1] - pad[3]:, :]
             heatmap = cv2.resize(heatmap, (width, height), interpolation=cv2.INTER_CUBIC)
             heatmap_avg = heatmap_avg + heatmap
 
-            paf = np.transpose(np.squeeze(paf), (1, 2, 0))
+            paf = np.transpose(np.squeeze(paf), transpose_order)
             paf = cv2.resize(paf, (0, 0), fx=8, fy=8, interpolation=cv2.INTER_CUBIC)
             paf = paf[pad[0]:paf.shape[0] - pad[2], pad[1]:paf.shape[1] - pad[3], :]
             paf = cv2.resize(paf, (width, height), interpolation=cv2.INTER_CUBIC)

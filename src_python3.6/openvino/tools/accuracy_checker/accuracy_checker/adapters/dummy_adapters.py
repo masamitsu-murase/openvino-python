@@ -24,6 +24,7 @@ class XML2DetectionAdapter(Adapter):
     """
 
     __provider__ = 'xml_detection'
+    prediction_types = (DetectionPrediction, )
 
     def process(self, tree, identifiers=None, frame_meta=None):
         class_to_ind = dict(zip(self.label_map.values(), range(len(self.label_map.values()))))

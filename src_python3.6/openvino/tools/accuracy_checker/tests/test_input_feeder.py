@@ -19,7 +19,7 @@ import re
 import numpy as np
 from accuracy_checker.config import ConfigError
 from accuracy_checker.launcher.input_feeder import InputFeeder
-from accuracy_checker.dataset import DataRepresentation
+from accuracy_checker.data_readers import DataRepresentation
 
 # InputInfo from openvino is needed here, but there is no appropriate API
 # to create InputInfo with specific shape, therefore lets use analog
@@ -48,6 +48,14 @@ class TestInputFeeder:
     def test_create_input_feeder_with_config_inputs_not_in_network_inputs_raise_config_error(self):
         with pytest.raises(ConfigError):
             InputFeeder([{'name': 'data2', 'type': 'INPUT', 'value': '.'}], {'data': (1, 3, 10, 10)})
+
+    def test_create_input_feeder_with_config_iamge_info_not_in_network_inputs_raise_config_error(self):
+        with pytest.raises(ConfigError):
+            InputFeeder([{'name': 'info', 'type': 'IMAGE_INFO'}], {'data': (1, 3, 10, 10)})
+
+    def test_create_input_feeder_with_only_iamge_info_in_network_inputs_raise_config_error(self):
+        with pytest.raises(ConfigError):
+            InputFeeder([{'name': 'info', 'type': 'IMAGE_INFO'}], {'info': (1, 3)})
 
     def test_create_input_feeder_without_config_inputs(self):
         input_feeder = InputFeeder([], {'data': (1, 3, 10, 10)})
@@ -89,6 +97,18 @@ class TestInputFeeder:
         expected_data = np.zeros((1, 3, 10, 10))
         assert 'input' in result
         assert np.array_equal(result['input'], expected_data)
+
+    def test_fill_non_constant_input_and_input_info_with_one_input_without_specific_mapping_batch_1(self):
+        input_feeder = InputFeeder(
+            [{'name': 'info', 'type': 'IMAGE_INFO'}],
+            {'input': InputInfo_test(shape=(1, 3, 10, 10)), 'info': InputInfo_test(shape=(1, 3))}
+        )
+        result = input_feeder.fill_non_constant_inputs([DataRepresentation(np.zeros((10, 10, 3)), identifier='0')])[0]
+        expected_data = np.zeros((1, 3, 10, 10))
+        assert 'input' in result
+        assert np.array_equal(result['input'], expected_data)
+        assert 'info' in result
+        assert np.array_equal(result['info'], np.array([[10, 10, 1]]))
 
     def test_fill_non_constant_input_without_specific_mapping_batch_2(self):
         input_feeder = InputFeeder([], { 'input': InputInfo_test(shape=(1, 3, 10, 10))})

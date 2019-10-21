@@ -19,9 +19,10 @@ from ..preprocessor.preprocessors import Preprocessor
 
 
 class PreprocessingExecutor:
-    def __init__(self, processors=None, dataset_name='custom', dataset_meta=None):
+    def __init__(self, processors=None, dataset_name='custom', dataset_meta=None, input_shapes=None):
         self.processors = []
         self.dataset_meta = dataset_meta
+        self.input_shapes = input_shapes
 
         if not processors:
             return
@@ -34,9 +35,16 @@ class PreprocessingExecutor:
 
             type_ = processor.get(identifier)
             preprocessor_config.validate(processor, type_)
-            preprocessor = Preprocessor.provide(processor[identifier], config=processor, name=type_)
+            preprocessor = Preprocessor.provide(
+                processor[identifier], config=processor, name=type_, input_shapes=input_shapes
+            )
 
             self.processors.append(preprocessor)
+
+    def __call__(self, context, *args, **kwargs):
+        batch_data = context.data_batch
+        batch_annotation = context.annotation_batch
+        context.data_batch = self.process(batch_data, batch_annotation)
 
     def process(self, images, batch_annotation=None):
         for i, _ in enumerate(images):

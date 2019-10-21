@@ -11,6 +11,8 @@ disable = C0103,
           arguments-differ,
           E1101,
           E1111,
+          E1129,
+          E0602,
           C0204,
           W0201,
           W0107,
@@ -18,8 +20,8 @@ disable = C0103,
 
 max-line-length = 120
 ignore-docstrings = yes
-extension-pkg-whitelist=inference_engine,cv2,numpy
-ignored-modules = numpy,cv2,openvino.inference_engine,caffe
+extension-pkg-whitelist=inference_engine,cv2,numpy,mxnet,tensorflow,pycocotools,onnxruntime
+ignored-modules = numpy,cv2,openvino.inference_engine,caffe,mxnet,tensorflow,pycocotools,onnxruntime
 load-plugins = pylint_checkers
 ignored-classes = pathlib.PurePath
 jobs=0

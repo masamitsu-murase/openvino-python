@@ -13,13 +13,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
+
 import math
 import cv2
 
-from .postprocessor import Postprocessor, BasePostprocessorConfig
+from .postprocessor import Postprocessor
 from ..representation import SegmentationAnnotation, SegmentationPrediction
 from ..config import NumberField, ConfigError
-
 
 class ExtendSegmentationMask(Postprocessor):
     """
@@ -31,14 +31,15 @@ class ExtendSegmentationMask(Postprocessor):
     annotation_types = (SegmentationAnnotation, )
     prediction_types = (SegmentationPrediction, )
 
-    def validate_config(self):
-        class _ExtendSegmentationMaskConfigValidator(BasePostprocessorConfig):
-            filling_label = NumberField(optional=True, floats=False)
-
-        extend_mask_config_validator = _ExtendSegmentationMaskConfigValidator(
-            self.__provider__, on_extra_argument=_ExtendSegmentationMaskConfigValidator.ERROR_ON_EXTRA_ARGUMENT
-        )
-        extend_mask_config_validator.validate(self.config)
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'filling_label' : NumberField(
+                optional=True, value_type=int, default=255, description="Value for filling border."
+            )
+        })
+        return parameters
 
     def configure(self):
         self.filling_label = self.config.get('filling_label', 255)
@@ -50,6 +51,7 @@ class ExtendSegmentationMask(Postprocessor):
             height, width = annotation_mask.shape[-2:]
             if dst_width < width or dst_height < height:
                 raise ConfigError('size for extending should be not less current mask size')
+
             pad = []
             pad.append(int(math.floor((dst_height - height) / 2.0)))
             pad.append(int(math.floor((dst_width - width) / 2.0)))

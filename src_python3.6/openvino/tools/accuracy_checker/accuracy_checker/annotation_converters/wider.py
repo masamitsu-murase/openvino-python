@@ -14,26 +14,36 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-
-from ..config import NumberField
+from ..config import NumberField, PathField
 from ..representation import DetectionAnnotation
 from ..utils import convert_bboxes_xywh_to_x1y1x2y2, read_txt
 
-from .format_converter import BaseFormatConverter, FileBasedAnnotationConverterConfig
-
-
-class WiderConverterConfig(FileBasedAnnotationConverterConfig):
-    label_start = NumberField(floats=False, optional=True)
+from .format_converter import BaseFormatConverter
 
 
 class WiderFormatConverter(BaseFormatConverter):
     __provider__ = 'wider'
+    annotation_types = (DetectionAnnotation, )
 
-    _config_validator_type = WiderConverterConfig
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'annotation_file': PathField(
+                description="Path to xml file, which contains ground truth data in WiderFace dataset format."
+            ),
+            'label_start': NumberField(
+                value_type=int, optional=True, default=1,
+                description="Specifies face label index in label map. Default value is 1. "
+                            "You can provide another value, if you want to use this"
+            )
+        })
+
+        return parameters
 
     def configure(self):
-        self.annotation_file = self.config['annotation_file']
-        self.label_start = self.config.get('label_start', 1)
+        self.annotation_file = self.get_value_from_config('annotation_file')
+        self.label_start = self.get_value_from_config('label_start')
 
     def convert(self):
         image_annotations = read_txt(self.annotation_file)

@@ -31,6 +31,8 @@ class PoseEstimationRepresentation(BaseRepresentation):
         areas = self.metadata.get('areas')
         if areas:
             return areas
+        if self.size == 0:
+            return []
         x_mins = np.min(self.x_values, axis=1)
         x_maxs = np.max(self.x_values, axis=1)
         y_mins = np.min(self.y_values, axis=1)
@@ -42,6 +44,8 @@ class PoseEstimationRepresentation(BaseRepresentation):
         rects = self.metadata.get('rects')
         if rects:
             return rects
+        if self.size == 0:
+            return []
         x_mins = np.min(self.x_values, axis=1)
         x_maxs = np.max(self.x_values, axis=1)
         y_mins = np.min(self.y_values, axis=1)
@@ -60,4 +64,4 @@ class PoseEstimationAnnotation(PoseEstimationRepresentation):
 class PoseEstimationPrediction(PoseEstimationRepresentation):
     def __init__(self, identifier='', x_values=None, y_values=None, visibility=None, scores=None, labels=None):
         super().__init__(identifier, x_values, y_values, visibility, labels)
-        self.scores = scores if scores.any() else []
+        self.scores = scores if scores.any() else np.array([])

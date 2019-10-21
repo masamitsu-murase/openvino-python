@@ -15,8 +15,19 @@ limitations under the License.
 """
 
 from .base_representation import BaseRepresentation
-from .classification_representation import Classification, ClassificationAnnotation, ClassificationPrediction
-from .detection_representation import Detection, DetectionAnnotation, DetectionPrediction
+from .classification_representation import (
+    Classification,
+    ClassificationAnnotation,
+    ClassificationPrediction,
+    ArgMaxClassificationPrediction
+)
+from .detection_representation import (
+    Detection,
+    DetectionAnnotation,
+    DetectionPrediction,
+    ActionDetectionAnnotation,
+    ActionDetectionPrediction
+)
 from .reid_representation import (
     ReIdentificationAnnotation,
     ReIdentificationClassificationAnnotation,
@@ -27,7 +38,9 @@ from .segmentation_representation import (
     SegmentationAnnotation,
     SegmentationPrediction,
     BrainTumorSegmentationAnnotation,
-    BrainTumorSegmentationPrediction
+    BrainTumorSegmentationPrediction,
+    CoCoInstanceSegmentationAnnotation,
+    CoCocInstanceSegmentationPrediction
 )
 from .character_recognition_representation import (
     CharacterRecognition,
@@ -55,10 +68,14 @@ __all__ = [
     'Classification',
     'ClassificationAnnotation',
     'ClassificationPrediction',
+    'ArgMaxClassificationPrediction',
 
     'Detection',
     'DetectionAnnotation',
     'DetectionPrediction',
+
+    'ActionDetectionAnnotation',
+    'ActionDetectionPrediction',
 
     'ReIdentificationAnnotation',
     'ReIdentificationClassificationAnnotation',
@@ -67,8 +84,12 @@ __all__ = [
     'SegmentationRepresentation',
     'SegmentationAnnotation',
     'SegmentationPrediction',
+
     'BrainTumorSegmentationAnnotation',
     'BrainTumorSegmentationPrediction',
+
+    'CoCoInstanceSegmentationAnnotation',
+    'CoCocInstanceSegmentationPrediction',
 
     'CharacterRecognition',
     'CharacterRecognitionAnnotation',

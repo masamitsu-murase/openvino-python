@@ -14,10 +14,35 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from ..config import BaseField, ConfigError
-from ..adapters import Adapter, AdapterField
-from ..config import ConfigValidator, StringField, ListField
-from ..dependency import ClassProvider, provide
+import numpy as np
+from ..adapters import AdapterField
+from ..config import ConfigValidator, StringField, ListField, ConfigError, InputField, ListInputsField
+from ..dependency import ClassProvider
+from ..utils import get_parameter_value_from_config
+
+class LauncherConfigValidator(ConfigValidator):
+    def validate(self, entry, field_uri=None):
+        super().validate(entry, field_uri)
+        inputs = entry.get('inputs')
+        count_non_const_inputs = 0
+        if inputs:
+            inputs_by_type = {input_type: [] for input_type in InputField.INPUTS_TYPES}
+            for input_layer in inputs:
+                input_type = input_layer['type']
+                inputs_by_type[input_type].append(input_layer['name'])
+
+                if input_type == 'INPUT':
+                    input_value = input_layer.get('value')
+                    if not input_value and count_non_const_inputs:
+                        raise ConfigError('input value should be specified in case of several non constant inputs')
+                    count_non_const_inputs += 1
+
+            additional_attributes = {
+                '_list_{}s'.format(input_type.lower()): inputs for input_type, inputs in inputs_by_type.items()
+            }
+
+            for additional_attribute, values in additional_attributes.items():
+                entry[additional_attribute] = values
 
 
 class Launcher(ClassProvider):
@@ -27,22 +52,52 @@ class Launcher(ClassProvider):
 
     __provider_type__ = 'launcher'
 
-    adapter = provide(Adapter)
+    def __init__(self, config_entry, *args, **kwargs):
+        self.config = config_entry
+        self.default_layout = 'NCHW'
+        self.const_inputs = self.config.get('_list_const_inputs', [])
+        self.image_info_inputs = self.config.get('_list_image_infos', [])
 
-    def __init__(self, config_entry, adapter, *args, **kwargs):
-        self.adapter = adapter
-        self._config = config_entry
+    @classmethod
+    def parameters(cls):
+        return {
+            'framework': StringField(
+                choices=Launcher.providers, default=cls.__provider__ if cls.__provider__ else None,
+                description="Framework name."
+            ),
+            'tags': ListField(allow_empty=False, optional=True, description="Launcher tags."),
+            'inputs': ListInputsField(optional=True, description="Inputs."),
+            'adapter': AdapterField(optional=True, description="Adapter."),
+            '_list_const_inputs': ListField(
+                allow_empty=True, optional=True, default=[], description="List of constant inputs."
+            ),
+            '_list_inputs': ListField(
+                allow_empty=True, optional=True, default=[], description="List of inputs."
+            ),
+            '_list_image_infos': ListField(
+                allow_empty=True, optional=True, default=[], description="List of image information inputs."
+            )
+        }
 
-    def predict(self, identifiers, data_representation, *args, **kwargs):
+    def validate(self):
+        LauncherConfigValidator('Launcher', fields=self.parameters()).validate(self.config)
+
+    def get_value_from_config(self, key):
+        return get_parameter_value_from_config(self.config, self.parameters(), key)
+
+    def predict(self, inputs, metadata, *args, **kwargs):
         """
         Args:
-            identifiers: list of input data identifiers.
-            data_representation: list of input data representations, which contain preprocessed data and its metadata.
+            inputs: dictionary where keys are input layers names and values are data for them.
+            metadata: metadata of input representations
         Returns:
             raw data from network.
         """
 
         raise NotImplementedError
+
+    def __call__(self, context, *args, **kwargs):
+        context.prediction_batch = self.predict(context.input_blobs, context.batch_meta)
 
     def release(self):
         raise NotImplementedError
@@ -52,53 +107,43 @@ class Launcher(ClassProvider):
         raise NotImplementedError
 
     @property
+    def output_blob(self):
+        raise NotImplementedError
+
+    @property
     def inputs(self):
         raise NotImplementedError
+
+    def predict_async(self, *args, **kwargs):
+        raise NotImplementedError('Launcher does not support async mode')
+
+    @property
+    def infer_requests(self):
+        return []
 
     def _provide_inputs_info_to_meta(self, meta):
         meta['input_shape'] = self.inputs
 
         return meta
 
+    @staticmethod
+    def fit_to_input(data, layer_name, layout):
+        if len(np.shape(data)) == 4:
+            return np.transpose(data, layout)
+        return np.array(data)
 
-class InputValidator(ConfigValidator):
-    name = StringField()
-    type = StringField(choices=('CONST_INPUT', 'INPUT'))
-    value = BaseField()
-
-
-class ListInputsField(ListField):
-    def __init__(self, **kwargs):
-        super().__init__(allow_empty=False, value_type=InputValidator('Inputs'), **kwargs)
-
-    def validate(self, entry, field_uri=None):
-        super().validate(entry, field_uri)
-        names_set = set()
-        for input_layer in entry:
-            input_name = input_layer['name']
-            if input_name not in names_set:
-                names_set.add(input_name)
-            else:
-                self.raise_error(entry, field_uri, '{} repeated name'.format(input_name))
-
-
-class LauncherConfig(ConfigValidator):
-    """
-    Specifies common part of configuration structure for launchers.
-    """
-
-    framework = StringField(choices=Launcher.providers)
-    tags = ListField(allow_empty=False, optional=True)
-    inputs = ListInputsField(optional=True)
-    adapter = AdapterField()
-
+    def inputs_info_for_meta(self):
+        return {
+            layer_name: shape for layer_name, shape in self.inputs.items()
+            if layer_name not in self.const_inputs + self.image_info_inputs
+        }
 
 def unsupported_launcher(name, error_message=None):
     class UnsupportedLauncher(Launcher):
         __provider__ = name
 
-        def __init__(self, config_entry, adapter, *args, **kwargs):
-            super().__init__(config_entry, adapter, *args, **kwargs)
+        def __init__(self, config_entry, *args, **kwargs):
+            super().__init__(config_entry, *args, **kwargs)
 
             msg = "{launcher} launcher is disabled. Please install {launcher} to enable it.".format(launcher=name)
             raise ValueError(error_message or msg)
@@ -116,34 +161,19 @@ def unsupported_launcher(name, error_message=None):
     return UnsupportedLauncher
 
 
-def create_launcher(launcher_config, dataset_meta=None):
+def create_launcher(launcher_config):
     """
     Args:
         launcher_config: launcher configuration file entry.
-        dataset_meta: metadata dictionary for dataset annotation.
     Returns:
         framework-specific launcher object.
     """
 
-    launcher_config_validator = LauncherConfig(
+    launcher_config_validator = LauncherConfigValidator(
         'Launcher_validator',
-        on_extra_argument=ConfigValidator.IGNORE_ON_EXTRA_ARGUMENT
+        on_extra_argument=ConfigValidator.IGNORE_ON_EXTRA_ARGUMENT,
     )
     launcher_config_validator.validate(launcher_config)
-
-    label_map = None
-    if dataset_meta:
-        label_map = dataset_meta.get('label_map')
-
     config_framework = launcher_config['framework']
-    config_adapter = launcher_config.get('adapter')
-    if not config_adapter:
-        adapter = None
-    elif isinstance(config_adapter, str):
-        adapter = Adapter.provide(config_adapter, launcher_config, label_map=label_map)
-    elif isinstance(config_adapter, dict):
-        adapter = Adapter.provide(config_adapter['type'], config_adapter, label_map=label_map)
-    else:
-        raise ConfigError
 
-    return Launcher.provide(config_framework, launcher_config, adapter=adapter)
+    return Launcher.provide(config_framework, launcher_config)

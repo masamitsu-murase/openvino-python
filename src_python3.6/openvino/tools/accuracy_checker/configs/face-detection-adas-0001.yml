@@ -6,8 +6,17 @@ models:
         tags:
           - FP32
         device: CPU
-        model:   face-detection-adas-0001/FP32/face-detection-adas-0001.xml
-        weights: face-detection-adas-0001/FP32/face-detection-adas-0001.bin
+        model:   Transportation/object_detection/face/pruned_mobilenet_reduced_ssd_shared_weights/dldt/FP32/face-detection-adas-0001.xml
+        weights: Transportation/object_detection/face/pruned_mobilenet_reduced_ssd_shared_weights/dldt/FP32/face-detection-adas-0001.bin
+        adapter: ssd
+        cpu_extensions: AUTO
+
+      - framework: dlsdk
+        tags:
+          - FP16
+        device: CPU
+        model:   Transportation/object_detection/face/pruned_mobilenet_reduced_ssd_shared_weights/dldt/FP16/face-detection-adas-0001.xml
+        weights: Transportation/object_detection/face/pruned_mobilenet_reduced_ssd_shared_weights/dldt/FP16/face-detection-adas-0001.bin
         adapter: ssd
         cpu_extensions: AUTO
 
@@ -15,58 +24,27 @@ models:
         tags:
           - INT8
         device: CPU
-        model:   face-detection-adas-0001/INT8/face-detection-adas-0001.xml
-        weights: face-detection-adas-0001/INT8/face-detection-adas-0001.bin
+        model:   fTransportation/object_detection/face/pruned_mobilenet_reduced_ssd_shared_weights/dldt/INT8/face-detection-adas-0001.xml
+        weights: Transportation/object_detection/face/pruned_mobilenet_reduced_ssd_shared_weights/dldt/INT8/face-detection-adas-0001.bin
         adapter: ssd
         cpu_extensions: AUTO
 
       - framework: dlsdk
         tags:
-          - GPU32
+          - FP32
         device: GPU
-        model:   face-detection-adas-0001/FP32/face-detection-adas-0001.xml
-        weights: face-detection-adas-0001/FP32/face-detection-adas-0001.bin
+        model:   Transportation/object_detection/face/pruned_mobilenet_reduced_ssd_shared_weights/dldt/FP32/face-detection-adas-0001.xml
+        weights: Transportation/object_detection/face/pruned_mobilenet_reduced_ssd_shared_weights/dldt/FP32/face-detection-adas-0001.bin
         adapter: ssd
 
       - framework: dlsdk
         tags:
-          - GPU16
+          - FP16
         device: GPU
-        model:   face-detection-adas-0001/FP16/face-detection-adas-0001.xml
-        weights: face-detection-adas-0001/FP16/face-detection-adas-0001.bin
+        model:   Transportation/object_detection/face/pruned_mobilenet_reduced_ssd_shared_weights/dldt/FP16/face-detection-adas-0001.xml
+        weights: Transportation/object_detection/face/pruned_mobilenet_reduced_ssd_shared_weights/dldt//FP16/face-detection-adas-0001.bin
         adapter: ssd
 
-      - framework: dlsdk
-        device: MYRIAD
-        model:   face-detection-adas-0001/FP16/face-detection-adas-0001.xml
-        weights: face-detection-adas-0001/FP16/face-detection-adas-0001.bin
-        adapter: ssd
-
-      - framework: dlsdk
-        device: HDDL
-        model:   face-detection-adas-0001/FP16/face-detection-adas-0001.xml
-        weights: face-detection-adas-0001/FP16/face-detection-adas-0001.bin
-        adapter: ssd
-
-      - framework: dlsdk
-        tags:
-          - FPGA16
-        device: HETERO:FPGA,CPU
-        model:   face-detection-adas-0001/FP32/face-detection-adas-0001.xml
-        weights: face-detection-adas-0001/FP32/face-detection-adas-0001.bin
-        adapter: ssd
-        cpu_extensions: AUTO
-        bitstream: 2019R1_A10DK_FP16_MobileNet_Clamp.aocx
-
-      - framework: dlsdk
-        tags:
-          - FPGA11
-        device: HETERO:FPGA,CPU
-        model:   face-detection-adas-0001/FP32/face-detection-adas-0001.xml
-        weights: face-detection-adas-0001/FP32/face-detection-adas-0001.bin
-        adapter: ssd
-        cpu_extensions: AUTO
-        bitstream: 2019R1_A10DK_FP11_ELU.aocx
 
     datasets:
       - name: wider

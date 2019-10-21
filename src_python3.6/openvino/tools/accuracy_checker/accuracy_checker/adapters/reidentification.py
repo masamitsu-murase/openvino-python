@@ -25,6 +25,7 @@ class ReidAdapter(Adapter):
     Class for converting output of Reid model to ReIdentificationPrediction representation
     """
     __provider__ = 'reid'
+    prediction_types = (ReIdentificationPrediction, )
 
     def configure(self):
         """

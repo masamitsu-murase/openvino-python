@@ -15,7 +15,7 @@ limitations under the License.
 """
 
 import numpy as np
-from .metric import PerImageEvaluationMetric, BaseMetricConfig
+from .metric import PerImageEvaluationMetric
 from ..config import BoolField, NumberField
 from ..representation import TextDetectionPrediction, TextDetectionAnnotation
 from ..utils import polygon_from_points
@@ -37,28 +37,39 @@ def get_intersection_area(detection_polygon, annotation_polygon):
     return detection_polygon.intersection(annotation_polygon).area
 
 
-class TextDetectionMetricConfig(BaseMetricConfig):
-    iou_constrain = NumberField(min_value=0, max_value=1, optional=True)
-    ignore_difficult = BoolField(optional=True)
-    area_precision_constrain = NumberField(min_value=0, max_value=1, optional=True)
-
-
 class TextDetectionMetric(PerImageEvaluationMetric):
     __provider__ = 'text_detection'
 
     annotation_types = (TextDetectionAnnotation, )
     prediction_types = (TextDetectionPrediction, )
 
-    def validate_config(self):
-        text_detection_metric_config = TextDetectionMetricConfig(
-            'TextDetectionMetric_config', TextDetectionMetricConfig.ERROR_ON_EXTRA_ARGUMENT
-        )
-        text_detection_metric_config.validate(self.config)
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'iou_constrain':  NumberField(
+                min_value=0, max_value=1, optional=True, default=0.5,
+                description="Minimal value for intersection over union that allows to make decision "
+                            "that prediction polygon is true positive."
+            ),
+            'ignore_difficult':  BoolField(
+                optional=True, default=True,
+                description="Allows to ignore difficult ground truth text polygons in metric calculation."
+            ),
+            'area_precision_constrain':  NumberField(
+                min_value=0, max_value=1, optional=True, default=0.5,
+                description="Minimal value for intersection over union that allows to make decision "
+                            "that prediction polygon matched with ignored annotation."
+            )
+
+        })
+
+        return parameters
 
     def configure(self):
-        self.iou_constrain = self.config.get('iou_constrain', 0.5)
-        self.area_precision_constrain = self.config.get('area_precision_constrain', 0.5)
-        self.ignore_difficult = self.config.get('ignore_difficult', False)
+        self.iou_constrain = self.get_value_from_config('iou_constrain')
+        self.area_precision_constrain = self.get_value_from_config('area_precision_constrain')
+        self.ignore_difficult = self.get_value_from_config('ignore_difficult')
         self.number_matched_detections = 0
         self.number_valid_annotations = 0
         self.number_valid_detections = 0
@@ -85,6 +96,7 @@ class TextDetectionMetric(PerImageEvaluationMetric):
 
                     if precision >= self.area_precision_constrain:
                         prediction_difficult_mask[det_id] = True
+                        break
 
         if num_gt > 0 and num_det > 0:
             iou_matrix = np.empty((num_gt, num_det))

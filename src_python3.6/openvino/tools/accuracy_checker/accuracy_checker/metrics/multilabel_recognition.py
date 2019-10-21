@@ -15,29 +15,33 @@ limitations under the License.
 """
 
 import numpy as np
-from .metric import PerImageEvaluationMetric, BaseMetricConfig
+from .metric import PerImageEvaluationMetric
 from ..representation import MultiLabelRecognitionAnnotation, MultiLabelRecognitionPrediction
-from ..config import StringField, BoolField
+from ..config import StringField, BoolField, ConfigValidator
 
 
 class MultiLabelMetric(PerImageEvaluationMetric):
-    annotation_types = (MultiLabelRecognitionAnnotation,)
-    prediction_types = (MultiLabelRecognitionPrediction,)
+    annotation_types = (MultiLabelRecognitionAnnotation, )
+    prediction_types = (MultiLabelRecognitionPrediction, )
 
-    def validate_config(self):
-        class _MultiLabelConfigValidator(BaseMetricConfig):
-            label_map = StringField(optional=True)
-            calculate_average = BoolField(optional=True)
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'label_map': StringField(
+                optional=True, default='label_map',
+                description="The field in annotation metadata, which contains dataset label map."
+            ),
+            'calculate_average': BoolField(
+                optional=True, default=True, description="Allows calculation of average accuracy."
+            )
+        })
 
-        config_validator = _MultiLabelConfigValidator(
-            'accuracy', on_extra_argument=_MultiLabelConfigValidator.ERROR_ON_EXTRA_ARGUMENT
-        )
-        config_validator.validate(self.config)
+        return parameters
 
     def configure(self):
-        label_map = self.config.get('label_map', 'label_map')
-        self.labels = self.dataset.metadata.get(label_map)
-        self.calculate_average = self.config.get('calculate_average', True)
+        self.labels = self.dataset.metadata.get(self.get_value_from_config('label_map'))
+        self.calculate_average = self.get_value_from_config('calculate_average')
 
         self.meta['scale'] = 1
         self.meta['postfix'] = ''
@@ -135,28 +139,40 @@ class MultiLabelRecall(MultiLabelMetric):
 
 class F1Score(PerImageEvaluationMetric):
     __provider__ = 'f1-score'
-    annotation_types = (MultiLabelRecognitionAnnotation,)
-    prediction_types = (MultiLabelRecognitionPrediction,)
+    annotation_types = (MultiLabelRecognitionAnnotation, )
+    prediction_types = (MultiLabelRecognitionPrediction, )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.precision = MultiLabelPrecision(self.config, self.dataset)
         self.recall = MultiLabelRecall(self.config, self.dataset)
 
-    def validate_config(self):
-        class _F1ScoreValidator(BaseMetricConfig):
-            label_map = StringField(optional=True)
-            calculate_average = BoolField(optional=True)
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'label_map': StringField(
+                optional=True, default='label_map',
+                description="The field in annotation metadata, which contains dataset label map."
+            ),
+            'calculate_average': BoolField(
+                optional=True, default=True, description="Allows calculation of average f-score"
+            )
+        })
 
-        f1_score_config_validator = _F1ScoreValidator(
-            'f1_score', on_extra_argument=_F1ScoreValidator.ERROR_ON_EXTRA_ARGUMENT
-        )
-        f1_score_config_validator.validate(self.config)
+        return parameters
+
+    def validate_config(self):
+        ConfigValidator(
+            'f1_score',
+            on_extra_argument=ConfigValidator.ERROR_ON_EXTRA_ARGUMENT,
+            fields=self.parameters()
+        ).validate(self.config)
 
     def configure(self):
-        label_map = self.config.get('label_map', 'label_map')
+        label_map = self.get_value_from_config('label_map')
         self.labels = self.dataset.metadata.get(label_map)
-        self.calculate_average = self.config.get('calculate_average', True)
+        self.calculate_average = self.get_value_from_config('calculate_average')
         self.meta['names'] = list(self.labels.values())
         if self.calculate_average:
             self.meta['names'].append('average')

@@ -9,6 +9,7 @@ models:
         device: CPU
         # topology IR (*.prototxt for caffe, *.xml for InferenceEngine, etc)
         # path to topology is prefixed with directory, specified in "-m/--models" option
+        # If you use dlsdk launcher, you can specify model in source framework format in this case Model Optimizer will be used for getting converted model.
         caffe_model:   SampLeNet.prototxt
         # topology weights binary (*.caffemodel for caffe, *.bin for InferenceEngine)
         caffe_weights: SampLeNet.caffemodel
@@ -37,11 +38,16 @@ models:
           #  In order to do this you need to provide your own annotation converter,
           # i.e. implement BaseFormatConverter interface.
           # All annotation converters are stored in accuracy_checker/annotation_converters directory.
-          converter: sample
+          converter: cifar10
           # converter specific parameters.
           # Full range available options you can find in accuracy_checker/annotation_converters/README.md
           # relative paths will be merged with "-s/--source" option
-          data_dir: sample_dataset
+          data_batch_file: cifar-10-batches-py/test_batch
+          # cifar stores images as binary file, we should convert them to png in first evaluation.
+          # Yo do not need to use these options if you have already converted dataset images.
+          convert_images: True
+          # path to save converted images.
+          converted_images_dir: sample_dataset/test
 
         # list of preprocessing, applied to each image during validation
         # order of entries matters

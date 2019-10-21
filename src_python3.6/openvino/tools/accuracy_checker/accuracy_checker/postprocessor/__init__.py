@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from .postprocessing_executor import PostprocessingExecutor
+from .postprocessing_executor import PostprocessingExecutor, Postprocessor
 
 from .filter import (
     FilterPostprocessor,
@@ -29,8 +29,9 @@ from .filter import (
 
 from .cast_to_int import CastToInt
 from .clip_boxes import ClipBoxes
-from .nms import NMS
+from .nms import NMS, SoftNMS
 from .resize_prediction_boxes import ResizePredictionBoxes
+from .faster_rcnn_postprocessing_resize import FRCNNPostprocessingBboxResize
 from .correct_yolo_v2_boxes import CorrectYoloV2Boxes
 from .resize_segmentation_mask import ResizeSegmentationMask
 from .encode_segmentation_mask import EncodeSegMask
@@ -40,8 +41,11 @@ from .extend_segmentation_mask import ExtendSegmentationMask
 from .zoom_segmentation_mask import ZoomSegMask
 from .crop_segmentation_mask import CropSegmentationMask
 from .clip_segmentation_mask import ClipSegmentationMask
+from .normalize_boxes import NormalizeBoxes
+from .resample_segmentation_prediction import SegmentationPredictionResample
 
 __all__ = [
+    'Postprocessor',
     'PostprocessingExecutor',
 
     'FilterPostprocessor',
@@ -55,8 +59,11 @@ __all__ = [
     'CastToInt',
     'ClipBoxes',
     'NMS',
+    'SoftNMS',
     'ResizePredictionBoxes',
+    'FRCNNPostprocessingBboxResize',
     'CorrectYoloV2Boxes',
+    'NormalizeBoxes',
 
     'ResizeSegmentationMask',
     'EncodeSegMask',
@@ -64,6 +71,7 @@ __all__ = [
     'ZoomSegMask',
     'CropSegmentationMask',
     'ClipSegmentationMask',
+    'SegmentationPredictionResample',
 
     'NormalizeLandmarksPoints'
 ]

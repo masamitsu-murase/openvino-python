@@ -13,15 +13,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
+
 from functools import singledispatch
 import scipy.misc
 import numpy as np
 
 from ..config import NumberField
 from ..utils import get_size_from_config
-from .postprocessor import PostprocessorWithSpecificTargets, PostprocessorWithTargetsConfigValidator
+from .postprocessor import PostprocessorWithSpecificTargets
 from ..representation import SegmentationPrediction, SegmentationAnnotation
-
 
 class ResizeSegmentationMask(PostprocessorWithSpecificTargets):
     __provider__ = 'resize_segmentation_mask'
@@ -29,14 +29,22 @@ class ResizeSegmentationMask(PostprocessorWithSpecificTargets):
     annotation_types = (SegmentationAnnotation, )
     prediction_types = (SegmentationPrediction, )
 
-    def validate_config(self):
-        class _ResizeConfigValidator(PostprocessorWithTargetsConfigValidator):
-            size = NumberField(floats=False, optional=True, min_value=1)
-            dst_width = NumberField(floats=False, optional=True, min_value=1)
-            dst_height = NumberField(floats=False, optional=True, min_value=1)
-
-        resize_config_validator = _ResizeConfigValidator(self.__provider__)
-        resize_config_validator.validate(self.config)
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'dst_width': NumberField(
+                value_type=int, optional=True, min_value=1, description="Destination width for box clipping."
+            ),
+            'dst_height': NumberField(
+                value_type=int, optional=True, min_value=1, description="Destination height for box clipping."
+            ),
+            'size': NumberField(
+                value_type=int, optional=True, min_value=1,
+                description="Destination size for box clipping for both dimensions."
+            )
+        })
+        return parameters
 
     def configure(self):
         self.dst_height, self.dst_width = get_size_from_config(self.config, allow_none=True)

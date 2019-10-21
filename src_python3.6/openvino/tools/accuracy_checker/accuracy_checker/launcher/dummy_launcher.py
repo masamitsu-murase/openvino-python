@@ -19,18 +19,7 @@ from ..logging import print_info
 from ..adapters import Adapter
 from ..config import PathField, StringField
 from .loaders import Loader
-from .launcher import Launcher, LauncherConfig
-
-
-class DummyLauncherConfig(LauncherConfig):
-    """
-    Specifies configuration structure for Dummy launcher.
-    """
-
-    loader = StringField(choices=Loader.providers)
-    data_path = PathField()
-    adapter = StringField(choices=Adapter.providers, optional=True)
-
+from .launcher import Launcher, LauncherConfigValidator
 
 class DummyLauncher(Launcher):
     """
@@ -39,23 +28,33 @@ class DummyLauncher(Launcher):
 
     __provider__ = 'dummy'
 
-    def __init__(self, config_entry: dict, adapter, *args, **kwargs):
-        super().__init__(config_entry, adapter, *args, **kwargs)
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'loader': StringField(choices=Loader.providers, description="Loader."),
+            'data_path': PathField(description="Data path."),
+            'adapter': StringField(choices=Adapter.providers, optional=True, description="Adapter.")
+        })
+        return parameters
 
-        dummy_launcher_config = DummyLauncherConfig('Dummy_Launcher')
-        dummy_launcher_config.validate(self._config)
+    def __init__(self, config_entry: dict, *args, **kwargs):
+        super().__init__(config_entry, *args, **kwargs)
 
-        self.data_path = get_path(self._config['data_path'])
+        dummy_launcher_config = LauncherConfigValidator('Dummy_Launcher', fields=self.parameters())
+        dummy_launcher_config.validate(self.config)
 
-        self._loader = Loader.provide(self._config['loader'], self.data_path)
-        if self.adapter:
-            self.adapter.output_blob = self.adapter.output_blob or self.data_path
-            self._loader.data = self.adapter(self._loader.data)
+        self.data_path = get_path(self.get_value_from_config('data_path'))
+
+        self._loader = Loader.provide(self.get_value_from_config['loader'], self.data_path)
 
         print_info("{} predictions objects loaded from {}".format(len(self._loader), self.data_path))
 
     def predict(self, identifiers, *args, **kwargs):
         return [self._loader[identifier] for identifier in identifiers]
+
+    def predict_async(self, *args, **kwargs):
+        raise ValueError('DummyLauncher does not support async processing')
 
     def release(self):
         pass
@@ -67,3 +66,10 @@ class DummyLauncher(Launcher):
     @property
     def inputs(self):
         return None
+
+    def get_all_inputs(self):
+        return self.inputs
+
+    @property
+    def output_blob(self):
+        return self.data_path

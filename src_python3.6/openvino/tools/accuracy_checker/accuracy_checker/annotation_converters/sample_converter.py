@@ -20,12 +20,7 @@ from ..config import PathField
 from ..representation import ClassificationAnnotation
 from ..utils import get_path, read_txt
 
-from .format_converter import BaseFormatConverter, BaseFormatConverterConfig
-
-
-class SampleConverterConfig(BaseFormatConverterConfig):
-    data_dir = PathField(is_directory=True)
-
+from .format_converter import BaseFormatConverter
 
 class SampleConverter(BaseFormatConverter):
     """
@@ -35,20 +30,31 @@ class SampleConverter(BaseFormatConverter):
     # register name for this converter
     # this name will be used for converter class look up
     __provider__ = 'sample'
+    annotation_types = (ClassificationAnnotation, )
 
-    _config_validator_type = SampleConverterConfig
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'data_dir' : PathField(is_directory=True, description="Path to sample dataset root directory.")
+        })
+        return parameters
 
     def configure(self):
+        """
+        This method is responsible for obtaining the necessary parameters
+        for converting from the command line or config.
+        """
         self.data_dir = self.config['data_dir']
 
     def convert(self):
         """
         This method is executed automatically when convert.py is started.
-        All arguments are automatically forwarded from command line arguments.
+        All arguments are automatically got from command line arguments or config file in method configure
 
         Returns:
             annotations: list of annotation representation objects.
-            meta: dictionary with additional dataset level metadata.
+            meta: dictionary with additional dataset level metadata (if provided)
         """
 
         dataset_directory = get_path(self.data_dir, is_directory=True)
@@ -95,6 +101,8 @@ class SampleConverter(BaseFormatConverter):
             class_id = labels.index(image_label)
 
             # create annotation representation object
+            # Provided parameters can be differ depends on task.
+            # ClassificationAnnotation contains image identifier and label for evaluation.
             annotations.append(ClassificationAnnotation(image_base, class_id))
 
         return annotations

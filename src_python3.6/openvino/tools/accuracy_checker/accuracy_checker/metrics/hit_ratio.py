@@ -20,30 +20,32 @@ import math
 import numpy as np
 
 from ..representation import HitRatioAnnotation, HitRatioPrediction
-from .metric import FullDatasetEvaluationMetric, BaseMetricConfig
+from .metric import FullDatasetEvaluationMetric
 from ..config import NumberField
 
 class BaseRecommenderMetric(FullDatasetEvaluationMetric):
     annotation_types = (HitRatioAnnotation, )
     prediction_types = (HitRatioPrediction, )
 
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'top_k': NumberField(
+                value_type=int, min_value=1, optional=True, default=10,
+                description="The number of classes with the highest probability,"
+                            "which will be used to decide if prediction is correct."
+            )
+        })
+
+        return parameters
+
     def __init__(self, discounter, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.discounter = discounter or (lambda item, rank: int(item in rank))
 
-
-    def validate_config(self):
-        class _RecommenderValidator(BaseMetricConfig):
-            top_k = NumberField(floats=False, min_value=1, optional=True)
-
-        recommender_validator = _RecommenderValidator(
-            'recommend',
-            on_extra_argument=_RecommenderValidator.ERROR_ON_EXTRA_ARGUMENT
-        )
-        recommender_validator.validate(self.config)
-
     def configure(self):
-        self.top_k = self.config.get('top_k', 10)
+        self.top_k = self.get_value_from_config('top_k')
         self.users_num = self.dataset.metadata.get('users_number')
         self.pred_per_user = {i: [] for i in range(self.users_num)}
         self.gt_items = {}
@@ -68,10 +70,12 @@ class BaseRecommenderMetric(FullDatasetEvaluationMetric):
 
         return np.mean(measure)
 
+
 def hit_ratio_discounter(item, rank):
     return int(item in rank)
 
-def ndcg_discunter(item, rank):
+
+def ndcg_discounter(item, rank):
     if item in rank:
         return math.log(2) / math.log(rank.index(item) + 2)
 
@@ -97,4 +101,4 @@ class NDSGMetric(BaseRecommenderMetric):
     __provider__ = 'ndcg'
 
     def __init__(self, *args, **kwargs):
-        super().__init__(ndcg_discunter, *args, **kwargs)
+        super().__init__(ndcg_discounter, *args, **kwargs)

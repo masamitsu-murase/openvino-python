@@ -1,27 +1,54 @@
+"""
+Copyright (c) 2019 Intel Corporation
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+"""
+
 import numpy as np
 
 from ..config import PathField, BoolField
 from ..representation import ClassificationAnnotation
 from ..utils import read_txt, get_path
 
-from .format_converter import BaseFormatConverter, BaseFormatConverterConfig
-
-
-class ImageNetFormatConverterConfig(BaseFormatConverterConfig):
-    annotation_file = PathField()
-    labels_file = PathField(optional=True)
-    has_background = BoolField(optional=True)
-
+from ..topology_types import ImageClassification
+from .format_converter import BaseFormatConverter
 
 class ImageNetFormatConverter(BaseFormatConverter):
     __provider__ = 'imagenet'
+    annotation_types = (ClassificationAnnotation, )
+    topology_types = (ImageClassification, )
 
-    _config_validator_type = ImageNetFormatConverterConfig
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'annotation_file': PathField(description="Path to annotation in txt format."),
+            'labels_file': PathField(
+                optional=True,
+                description="Path to file with word description of labels (synset words)."
+            ),
+            'has_background': BoolField(
+                optional=True, default=False,
+                description="Allows to add background label to original labels and"
+                            " convert dataset for 1001 classes instead 1000."
+            )
+        })
+        return parameters
 
     def configure(self):
-        self.annotation_file = self.config['annotation_file']
-        self.labels_file = self.config.get('labels_file')
-        self.has_background = self.config.get('has_background', False)
+        self.annotation_file = self.get_value_from_config('annotation_file')
+        self.labels_file = self.get_value_from_config('labels_file')
+        self.has_background = self.get_value_from_config('has_background')
 
     def convert(self):
         annotation = []

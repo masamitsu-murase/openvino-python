@@ -18,14 +18,14 @@ from __future__ import absolute_import, print_function
 
 import re
 
-from ._reid_common import check_dirs, read_directory
+from ._reid_common import check_dirs, read_directory, ReIdentificationAnnotation
 from .format_converter import DirectoryBasedAnnotationConverter
 
 MARKET_IMAGE_PATTERN = re.compile(r'([-\d]+)_c(\d)')
 
-
 class Market1501Converter(DirectoryBasedAnnotationConverter):
-    __provider__ = "market1501"
+    __provider__ = 'market1501_reid'
+    annotation_types = (ReIdentificationAnnotation, )
 
     def convert(self):
         gallery = self.data_dir / 'bounding_box_test'

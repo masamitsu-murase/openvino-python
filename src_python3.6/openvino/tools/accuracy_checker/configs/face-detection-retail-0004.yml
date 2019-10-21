@@ -6,8 +6,17 @@ models:
         tags:
           - FP32
         device: CPU
-        model:   face-detection-retail-0004/FP32/face-detection-retail-0004.xml
-        weights: face-detection-retail-0004/FP32/face-detection-retail-0004.bin
+        model:   Retail/object_detection/face/sqnet1.0modif-ssd/0004/dldt/FP32/face-detection-retail-0004.xml
+        weights: Retail/object_detection/face/sqnet1.0modif-ssd/0004/dldt/FP32/face-detection-retail-0004.bin
+        adapter: ssd
+        cpu_extensions: AUTO
+
+      - framework: dlsdk
+        tags:
+          - FP16
+        device: CPU
+        model:   Retail/object_detection/face/sqnet1.0modif-ssd/0004/dldt/FP16/face-detection-retail-0004.xml
+        weights: Retail/object_detection/face/sqnet1.0modif-ssd/0004/dldt/FP16/face-detection-retail-0004.bin
         adapter: ssd
         cpu_extensions: AUTO
 
@@ -15,58 +24,26 @@ models:
         tags:
           - INT8
         device: CPU
-        model:   face-detection-retail-0004/INT8/face-detection-retail-0004.xml
-        weights: face-detection-retail-0004/INT8/face-detection-retail-0004.bin
+        model:   Retail/object_detection/face/sqnet1.0modif-ssd/0004/dldt/INT8/face-detection-retail-0004.xml
+        weights: Retail/object_detection/face/sqnet1.0modif-ssd/0004/dldt/INT8/face-detection-retail-0004.bin
         adapter: ssd
         cpu_extensions: AUTO
 
       - framework: dlsdk
         tags:
-          - GPU32
+          - FP32
         device: GPU
-        model:   face-detection-retail-0004/FP32/face-detection-retail-0004.xml
-        weights: face-detection-retail-0004/FP32/face-detection-retail-0004.bin
+        model:   Retail/object_detection/face/sqnet1.0modif-ssd/0004/dldt/FP32/face-detection-retail-0004.xml
+        weights: Retail/object_detection/face/sqnet1.0modif-ssd/0004/dldt/FP32/face-detection-retail-0004.bin
         adapter: ssd
 
       - framework: dlsdk
         tags:
-          - GPU16
+          - FP16
         device: GPU
-        model:   face-detection-retail-0004/FP16/face-detection-retail-0004.xml
-        weights: face-detection-retail-0004/FP16/face-detection-retail-0004.bin
+        model:   Retail/object_detection/face/sqnet1.0modif-ssd/0004/dldt/FP16/face-detection-retail-0004.xml
+        weights: Retail/object_detection/face/sqnet1.0modif-ssd/0004/dldt/FP16/face-detection-retail-0004.bin
         adapter: ssd
-
-      - framework: dlsdk
-        device: MYRIAD
-        model:   face-detection-retail-0004/FP16/face-detection-retail-0004.xml
-        weights: face-detection-retail-0004/FP16/face-detection-retail-0004.bin
-        adapter: ssd
-
-      - framework: dlsdk
-        device: HDDL
-        model:   face-detection-retail-0004/FP16/face-detection-retail-0004.xml
-        weights: face-detection-retail-0004/FP16/face-detection-retail-0004.bin
-        adapter: ssd
-
-      - framework: dlsdk
-        tags:
-          - FPGA16
-        device: HETERO:FPGA,CPU
-        model:   face-detection-retail-0004/FP32/face-detection-retail-0004.xml
-        weights: face-detection-retail-0004/FP32/face-detection-retail-0004.bin
-        adapter: ssd
-        cpu_extensions: AUTO
-        bitstream: 2019R1_A10DK_FP16_TinyYolo.aocx
-
-      - framework: dlsdk
-        tags:
-          - FPGA11
-        device: HETERO:FPGA,CPU
-        model:   face-detection-retail-0004/FP32/face-detection-retail-0004.xml
-        weights: face-detection-retail-0004/FP32/face-detection-retail-0004.bin
-        adapter: ssd
-        cpu_extensions: AUTO
-        bitstream: 2019R1_A10DK_FP11_CaffeMobileNet.aocx
 
     datasets:
       - name: wider

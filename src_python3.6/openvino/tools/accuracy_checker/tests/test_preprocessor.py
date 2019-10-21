@@ -28,10 +28,12 @@ from accuracy_checker.preprocessor import (
     BgrToRgb,
     CropRect,
     ExtendAroundRect,
-    PointAligner
+    PointAligner,
+    GeometricOperationMetadata
 )
 from accuracy_checker.preprocessor.preprocessing_executor import PreprocessingExecutor
-from accuracy_checker.dataset import DataRepresentation
+from accuracy_checker.preprocessor.preprocessors import _OpenCVResizer
+from accuracy_checker.data_readers import DataRepresentation
 
 
 class TestResize:
@@ -40,13 +42,12 @@ class TestResize:
         resize = Preprocessor.provide('resize', {'type': 'resize', 'size': 200})
 
         input_mock = mocker.Mock()
+        input_mock.shape = (480, 640, 3)
         resize(DataRepresentation(input_mock))
-
-        assert not resize.use_pil
         assert resize.dst_width == 200
         assert resize.dst_height == 200
         cv2_resize_mock.assert_called_once_with(
-            input_mock, (200, 200), interpolation=Resize.OPENCV_INTERPOLATION['LINEAR']
+            input_mock, (200, 200), interpolation=_OpenCVResizer.supported_interpolations['LINEAR']
         )
 
     def test_custom_resize(self, mocker):
@@ -57,14 +58,14 @@ class TestResize:
         )
 
         input_mock = mocker.Mock()
+        input_mock.shape = (480, 640, 3)
         resize(DataRepresentation(input_mock))
 
-        assert not resize.use_pil
         assert resize.dst_width == 126
         assert resize.dst_height == 128
         cv2_resize_mock.assert_called_once_with(
             input_mock, (126, 128),
-            interpolation=Resize.OPENCV_INTERPOLATION['CUBIC']
+            interpolation=_OpenCVResizer.supported_interpolations['CUBIC']
         )
 
     def test_resize_without_save_aspect_ratio(self):
@@ -114,6 +115,42 @@ class TestResize:
 
         assert result.shape == (300, 100, 3)
 
+    def test_resize_save_aspect_ratio_frcnn_keep_aspect_ratio(self):
+        input_image = np.ones((480, 640, 3))
+        resize = Preprocessor.provide('resize', {
+            'type': 'resize',
+            'dst_width': 100,
+            'dst_height': 150,
+            'aspect_ratio_scale': 'frcnn_keep_aspect_ratio'
+        })
+        result = resize(DataRepresentation(input_image))
+
+        assert result.data.shape == (100, 133, 3)
+        assert result.metadata == {
+                'geometric_operations': [
+                    GeometricOperationMetadata(
+                        type='resize',
+                        parameters={
+                            'scale_x': 0.2078125,
+                            'scale_y': 0.20833333333333334,
+                            'image_info': [100, 133, 1],
+                            'original_width': 640,
+                            'original_height': 480,
+                            'preferable_width': 133,
+                            'preferable_height': 150
+                            }
+                        )
+                    ],
+                'image_info': [100, 133, 1],
+                'image_size': (480, 640, 3),
+                'original_height': 480,
+                'original_width': 640,
+                'preferable_height': 150,
+                'preferable_width': 133,
+                'scale_x': 0.2078125,
+                'scale_y': 0.20833333333333334
+                }
+
     def test_resize_to_negative_size_raise_config_error(self):
         with pytest.raises(ConfigError):
             Preprocessor.provide('resize', {'type': 'resize', 'size': -100})
@@ -144,6 +181,34 @@ class TestResize:
     def test_resize_provided_only_dst_width_raise_config_error(self):
         with pytest.raises(ValueError):
             Preprocessor.provide('resize', {'type': 'resize', 'dst_width': 100})
+
+
+class TestAutoResize:
+    def test_default_auto_resize(self, mocker):
+        cv2_resize_mock = mocker.patch('accuracy_checker.preprocessor.preprocessors.cv2.resize')
+        resize = Preprocessor.provide('auto_resize', {'type': 'auto_resize'}, input_shapes={'data': [1, 3, 200, 200]})
+
+        input_mock = mocker.Mock()
+        resize(DataRepresentation(input_mock))
+
+        assert resize.dst_width == 200
+        assert resize.dst_height == 200
+        cv2_resize_mock.assert_called_once_with(input_mock, (200, 200))
+
+    def test_auto_resize_input_shape_not_provided_raise_config_error(self):
+        with pytest.raises(ConfigError):
+            Preprocessor.provide('auto_resize', {'type': 'auto_resize'})
+
+    def test_auto_resize_with_several_input_shapes_raise_config_error(self):
+        with pytest.raises(ConfigError):
+            Preprocessor.provide(
+                'auto_resize', {'type': 'auto_resize'},
+                input_shapes={'data': [1, 3, 200, 200], 'data2': [1, 3, 300, 300]}
+            )
+
+    def test_auto_resize_empty_input_shapes_raise_config_error(self):
+        with pytest.raises(ConfigError):
+            Preprocessor.provide('auto_resize', {'type': 'auto_resize'}, input_shapes={})
 
 
 class TestNormalization:
@@ -291,7 +356,8 @@ class TestCrop:
         image_rep = crop(DataRepresentation(image))
 
         assert image_rep.data.shape == (33, 50, 3)
-        assert image_rep.metadata == {'image_size': (100, 100, 3)}
+        assert image_rep.metadata == {'image_size': (100, 100, 3),
+                'geometric_operations': [GeometricOperationMetadata(type='crop', parameters={})]}
 
     def test_crop_to_size(self):
         crop = Crop({'size': 50, 'type': 'crop'})
@@ -299,7 +365,8 @@ class TestCrop:
         image_rep = crop(DataRepresentation(image))
 
         assert image_rep.data.shape == (50, 50, 3)
-        assert image_rep.metadata == {'image_size': (100, 100, 3)}
+        assert image_rep.metadata == {'image_size': (100, 100, 3),
+                'geometric_operations': [GeometricOperationMetadata(type='crop', parameters={})]}
 
     def test_crop_higher_non_symmetric(self):
         crop = Crop({'dst_width': 50, 'dst_height': 12, 'type': 'crop'})
@@ -307,7 +374,8 @@ class TestCrop:
         image_rep = crop(DataRepresentation(image))
 
         assert image_rep.data.shape == (12, 50, 3)
-        assert image_rep.metadata == {'image_size': (70, 50, 3)}
+        assert image_rep.metadata == {'image_size': (70, 50, 3),
+                'geometric_operations': [GeometricOperationMetadata(type='crop', parameters={})]}
 
     def test_crop_less(self):
         crop = Crop({'dst_width': 151, 'dst_height': 42, 'type': 'crop'})
@@ -315,7 +383,8 @@ class TestCrop:
         image_rep = crop(DataRepresentation(image))
 
         assert image_rep.data.shape == (42, 151, 3)
-        assert image_rep.metadata == {'image_size': (30, 30, 3)}
+        assert image_rep.metadata == {'image_size': (30, 30, 3),
+                'geometric_operations': [GeometricOperationMetadata(type='crop', parameters={})]}
 
     def test_crop_less_non_symmetric(self):
         crop = Crop({'dst_width': 42, 'dst_height': 151, 'type': 'crop'})
@@ -323,7 +392,26 @@ class TestCrop:
         image_rep = crop(DataRepresentation(image))
 
         assert image_rep.data.shape == (151, 42, 3)
-        assert image_rep.metadata == {'image_size': (30, 40, 3)}
+        assert image_rep.metadata == {'image_size': (30, 40, 3),
+                'geometric_operations': [GeometricOperationMetadata(type='crop', parameters={})]}
+
+    def test_crop_central_fraction_symmetric(self):
+        crop = Crop({'central_fraction': 0.5, 'type': 'crop'})
+        image = np.zeros((40, 40, 3))
+        image_rep = crop(DataRepresentation(image))
+
+        assert image_rep.data.shape == (20, 20, 3)
+        assert image_rep.metadata == {'image_size': (40, 40, 3),
+                'geometric_operations': [GeometricOperationMetadata(type='crop', parameters={})]}
+
+    def test_crop_central_fraction_non_symmetric(self):
+        crop = Crop({'central_fraction': 0.5, 'type': 'crop'})
+        image = np.zeros((80, 40, 3))
+        image_rep = crop(DataRepresentation(image))
+
+        assert image_rep.data.shape == (40, 20, 3)
+        assert image_rep.metadata == {'image_size': (80, 40, 3),
+                'geometric_operations': [GeometricOperationMetadata(type='crop', parameters={})]}
 
     def test_crop_to_negative_size_raise_config_error(self):
         with pytest.raises(ConfigError):
@@ -344,10 +432,32 @@ class TestCrop:
             assert len(warnings) == 1
             result = crop.process(DataRepresentation(image))
             assert result.data.shape == (200, 200, 3)
-            assert result.metadata == {'image_size': (30, 40, 3)}
+            assert result.metadata == {'image_size': (30, 40, 3),
+                    'geometric_operations': [GeometricOperationMetadata(type='crop', parameters={})]}
+
+    def test_crop_not_provided_size_dst_height_dst_width_central_fraction_raise_config_error(self):
+        with pytest.raises(ConfigError):
+            Crop({'type': 'crop'})
+
+    def test_crop_provided_size_and_central_fraction_raise_config_error(self):
+        with pytest.raises(ConfigError):
+            Crop({'type': 'crop', 'size': 200, 'central_fraction': 0.875})
+
+    def test_crop_provided_dst_height_dst_width_and_central_fraction_raise_config_error(self):
+        with pytest.raises(ConfigError):
+            Crop({'type': 'crop', 'dst_height': 200, 'dst_width': 100, 'central_fraction': 0.875})
+
+    def test_crop_with_negative_central_fraction_raise_config_error(self):
+        with pytest.raises(ConfigError):
+            Crop({'type': 'crop', 'central_fraction': -0.875})
+
+    def test_crop_with_central_fraction_more_1_raise_config_error(self):
+        with pytest.raises(ConfigError):
+            Crop({'type': 'crop', 'central_fraction': 2})
 
 
 class TestFlip:
+    # TODO: check image metadata after flip?
     def test_horizontal_flip(self):
         image = np.random.randint(0, 255, (30, 40, 3))
         expected_image = cv2.flip(image, 0)
@@ -360,9 +470,9 @@ class TestFlip:
         flip = Flip({'type': 'flip', 'mode': 'vertical'})
         assert np.array_equal(expected_image, flip.process(DataRepresentation(image)).data)
 
-    def test_flip_raise_config_error_if_mode_not_provided(self):
-        with pytest.raises(ConfigError):
-            Flip({'type': 'flip'})
+    def test_flip_default_value_if_mode_not_provided(self):
+        flip = Flip({'type': 'flip'})
+        assert np.array_equal(0, flip.mode)
 
     def test_flip_raise_config_error_if_mode_unknown(self):
         with pytest.raises(ConfigError):
@@ -584,6 +694,12 @@ class TestPreprocessorExtraArgs:
     def test_resize_raise_config_error_on_extra_args(self):
         with pytest.raises(ConfigError):
             Preprocessor.provide('resize', {'type': 'resize', 'size': 1, 'something_extra': 'extra'})
+
+    def test_auto_resize_raise_config_error_on_extra_args(self):
+        with pytest.raises(ConfigError):
+            Preprocessor.provide('auto_resize', {'type': 'auto_resize', 'something_extra': 'extra'},
+                                 input_shapes={'data': [1, 3, 200, 200]}
+                                 )
 
     def test_normalization_raise_config_error_on_extra_args(self):
         with pytest.raises(ConfigError):

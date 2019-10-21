@@ -57,22 +57,35 @@ class PostprocessingExecutor:
 
         return annotations, predictions
 
-    def process_image(self, annotation, prediction):
+    def process_image(self, annotation, prediction, image_metadata=None):
         for method in self._image_processors:
             annotation_entries, prediction_entries = method.get_entries(annotation, prediction)
-            method.process(annotation_entries, prediction_entries)
+            method.process(annotation_entries, prediction_entries, image_metadata)
 
         return annotation, prediction
 
-    def process_batch(self, annotations, predictions):
-        return zipped_transform(self.process_image, annotations, predictions)
+    def process_batch(self, annotations, predictions, metas=None):
+        # FIX IT: remove zipped_transform here in the future -- it is too flexible and unpredictable
+        if metas is None:
+            zipped_result = zipped_transform(self.process_image, annotations, predictions)
+        else:
+            zipped_result = zipped_transform(self.process_image, annotations, predictions, metas)
+        return zipped_result[0:2] # return changed annotations and predictions only
 
-    def full_process(self, annotations, predictions):
-        return self.process_dataset(*self.process_batch(annotations, predictions))
+    def full_process(self, annotations, predictions, metas=None):
+        return self.process_dataset(*self.process_batch(annotations, predictions, metas))
 
     @property
     def has_dataset_processors(self):
         return len(self._dataset_processors) != 0
+
+    def __call__(self, context, *args, **kwargs):
+        batch_annotation = context.annotation_batch
+        batch_prediction = context.prediction_batch
+        batch_meta = getattr(context, 'meta_batch', None) # context could have meta_batch in the future
+        context.batch_annotation, context.batch_prediction = self.process_batch(batch_annotation,
+                                                                                batch_prediction,
+                                                                                batch_meta)
 
 
 class PostprocessorConfig(ConfigValidator):

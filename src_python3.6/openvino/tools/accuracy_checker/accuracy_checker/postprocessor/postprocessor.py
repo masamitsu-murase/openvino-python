@@ -24,21 +24,36 @@ from ..utils import (
     string_to_list,
     check_representation_type,
     get_supported_representations,
-    enum_values
+    enum_values,
+    get_parameter_value_from_config
 )
-
-
-class BasePostprocessorConfig(ConfigValidator):
-    type = StringField()
-    annotation_source = BaseField(optional=True)
-    prediction_source = BaseField(optional=True)
-
 
 class Postprocessor(ClassProvider):
     __provider_type__ = 'postprocessor'
 
     annotation_types = ()
     prediction_types = ()
+
+    @classmethod
+    def parameters(cls):
+        return {
+            'type': StringField(
+                default=cls.__provider__ if hasattr(cls, '__provider__') else None, description="Postprocessor type.",
+            ),
+            'annotation_source': BaseField(
+                optional=True,
+                description="Annotation identifier in case when complicated representation"
+                            " located in representation container is used."
+            ),
+            'prediction_source': BaseField(
+                optional=True,
+                description="Output layer name in case when complicated representation"
+                            " located in representation container is used."
+            )
+        }
+
+    def get_value_from_config(self, key):
+        return get_parameter_value_from_config(self.config, self.parameters(), key)
 
     def __init__(self, config, name=None, meta=None, state=None):
         self.config = config
@@ -47,11 +62,11 @@ class Postprocessor(ClassProvider):
         self.state = state
         self.image_size = None
 
-        self.annotation_source = self.config.get('annotation_source')
+        self.annotation_source = self.get_value_from_config('annotation_source')
         if self.annotation_source and not isinstance(self.annotation_source, list):
             self.annotation_source = string_to_list(self.annotation_source)
 
-        self.prediction_source = self.config.get('prediction_source')
+        self.prediction_source = self.get_value_from_config('prediction_source')
         if self.prediction_source and not isinstance(self.prediction_source, list):
             self.prediction_source = string_to_list(self.prediction_source)
 
@@ -67,16 +82,31 @@ class Postprocessor(ClassProvider):
     def process_image(self, annotation, prediction):
         raise NotImplementedError
 
-    def process(self, annotation, prediction):
+    def process_image_with_metadata(self, annotation, prediction, image_metadata=None):
+        # This is the default implementation.
+        # For the older postprocessor classes that do not know that
+        # postprocessing may be done with using image_metadata; in this case
+        # the postprocessor class overrides the method `process_image` only,
+        # and the overriden method will be called by this default
+        # implementation.
+        #
+        # Note that if a postprocessor class wants to use image_metadata,
+        # it MUST overrides this method `process_image_with_metadata`
+        # instead of `process_image`.
+        return self.process_image(annotation, prediction)
+
+    def process(self, annotation, prediction, image_metadata=None):
         image_size = annotation[0].metadata.get('image_size') if not None in annotation else None
         self.image_size = None
         if image_size:
             self.image_size = image_size[0]
-        self.process_image(annotation, prediction)
+
+        self.process_image_with_metadata(annotation, prediction, image_metadata)
 
         return annotation, prediction
 
-    def process_all(self, annotations, predictions):
+    def process_all(self, annotations, predictions, image_metadata=None):
+        assert image_metadata is None, "The method 'process_all' using image_metadata has not been implemented yet"
         zipped_transform(self.process, zipped_transform(self.get_entries, annotations, predictions))
         return annotations, predictions
 
@@ -84,9 +114,9 @@ class Postprocessor(ClassProvider):
         pass
 
     def validate_config(self):
-        BasePostprocessorConfig(
-            self.name, on_extra_argument=BasePostprocessorConfig.ERROR_ON_EXTRA_ARGUMENT
-        ).validate(self.config)
+        ConfigValidator(self.name,
+                        on_extra_argument=ConfigValidator.ERROR_ON_EXTRA_ARGUMENT,
+                        fields=self.parameters()).validate(self.config)
 
     def get_entries(self, annotation, prediction):
         message_not_found = '{}: {} is not found in container'
@@ -127,20 +157,19 @@ class ApplyToOption(Enum):
     PREDICTION = 'prediction'
     ALL = 'all'
 
-
-class PostprocessorWithTargetsConfigValidator(BasePostprocessorConfig):
-    apply_to = StringField(optional=True, choices=enum_values(ApplyToOption))
-
-
 class PostprocessorWithSpecificTargets(Postprocessor):
-    def validate_config(self):
-        _config_validator = PostprocessorWithTargetsConfigValidator(
-            self.__provider__, on_extra_argument=PostprocessorWithTargetsConfigValidator.ERROR_ON_EXTRA_ARGUMENT
-        )
-        _config_validator.validate(self.config)
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'apply_to' : StringField(optional=True, choices=enum_values(ApplyToOption),
+                                     description="determines target boxes for processing (annotation for ground truth "
+                                     "boxes and prediction for detection results, all for both).")
+        })
+        return parameters
 
     def setup(self):
-        apply_to = self.config.get('apply_to')
+        apply_to = self.get_value_from_config('apply_to')
         self.apply_to = ApplyToOption(apply_to) if apply_to else None
 
         if (self.annotation_source or self.prediction_source) and self.apply_to:
@@ -151,7 +180,7 @@ class PostprocessorWithSpecificTargets(Postprocessor):
 
         self.configure()
 
-    def process(self, annotation, prediction):
+    def process(self, annotation, prediction, image_metadata=None):
         image_size = annotation[0].metadata.get('image_size') if not None in annotation else None
         self.image_size = None
         if image_size:
@@ -166,7 +195,8 @@ class PostprocessorWithSpecificTargets(Postprocessor):
         if not target_annotations and not target_predictions:
             raise ValueError("Suitable targets for {} not found".format(self.name))
 
-        self.process_image(target_annotations, target_predictions)
+        self.process_image_with_metadata(target_annotations, target_predictions, image_metadata)
+
         return annotation, prediction
 
     def _choose_targets_using_sources(self, annotations, predictions):

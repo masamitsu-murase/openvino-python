@@ -19,6 +19,7 @@ from .preprocessors import (
     Preprocessor,
 
     Resize,
+    AutoResize,
     Flip,
     Normalize,
     Crop,
@@ -29,7 +30,9 @@ from .preprocessors import (
     PointAligner,
     Tiling,
     Crop3D,
-    Normalize3d
+    Normalize3d,
+    TfConvertImageDType,
+    GeometricOperationMetadata
 )
 
 __all__ = [
@@ -37,6 +40,7 @@ __all__ = [
 
     'Preprocessor',
     'Resize',
+    'AutoResize',
     'Flip',
     'Normalize',
     'Crop',

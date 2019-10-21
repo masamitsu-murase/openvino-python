@@ -13,7 +13,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
+
 import warnings
+
+import copy
 import json
 from pathlib import Path
 from argparse import ArgumentParser
@@ -21,8 +24,9 @@ from functools import partial
 
 import numpy as np
 
+from ..representation import ReIdentificationClassificationAnnotation
 from ..utils import get_path
-
+from ..data_analyzer import BaseDataAnalyzer
 from .format_converter import BaseFormatConverter
 
 
@@ -44,17 +48,52 @@ def build_argparser():
     parser.add_argument("-m", "--meta_name", help="Meta info file name", required=False)
     parser.add_argument("-a", "--annotation_name", help="Annotation file name", required=False)
     parser.add_argument("-ss", "--subsample", help="Dataset subsample size", required=False)
-    parser.add_argument("--subsample_seed", help="Seed for generation dataset subsample", type=int, required=False)
+    parser.add_argument(
+        "--subsample_seed", help="Seed for generation dataset subsample", type=int, required=False, default=666
+    )
+    parser.add_argument('--analyze_dataset', required=False, action='store_true')
 
     return parser
 
 
 def make_subset(annotation, size, seed=666):
+    def make_subset_pairwise(annotation, size):
+        def get_pairs(pairs_list):
+            pairs_set = set()
+            for identifier in pairs_list:
+                next_annotation = next(
+                    pair_annotation for pair_annotation in annotation if pair_annotation.identifier == identifier
+                )
+                positive_pairs = get_pairs(next_annotation.positive_pairs)
+                negative_pairs = get_pairs(next_annotation.negative_pairs)
+                pairs_set.add(next_annotation)
+                pairs_set.update(positive_pairs)
+                pairs_set.update(negative_pairs)
+            return pairs_set
+
+        subsample_set = set()
+        while len(subsample_set) < size:
+            ann_ind = np.random.choice(len(annotation), 1)
+            annotation_for_subset = annotation[ann_ind[0]]
+            positive_pairs = annotation_for_subset.positive_pairs
+            negative_pairs = annotation_for_subset.negative_pairs
+            if len(positive_pairs) + len(negative_pairs) == 0:
+                continue
+            updated_pairs = set()
+            updated_pairs.add(annotation_for_subset)
+            updated_pairs.update(get_pairs(positive_pairs))
+            updated_pairs.update(get_pairs(negative_pairs))
+            subsample_set.update(updated_pairs)
+        return list(subsample_set)
+
+    np.random.seed(seed)
     dataset_size = len(annotation)
     if dataset_size < size:
-        warnings.warn('dataset size - {} less than subsample size - {}'.format(dataste_size, size))
+        warnings.warn('Dataset size {} less than subset size {}'.format(dataset_size, size))
         return annotation
-    np.random.seed(seed)
+    if isinstance(annotation[-1], ReIdentificationClassificationAnnotation):
+        return make_subset_pairwise(annotation, size)
+
     return list(np.random.choice(annotation, size=size, replace=False))
 
 
@@ -69,7 +108,11 @@ def main():
     converter = configure_converter(converter_args, args, converter)
     out_dir = args.output_dir or Path.cwd()
 
-    result, meta = converter.convert()
+    results = converter.convert()
+    if isinstance(results, tuple) and len(results) == 2:
+        result, meta = results
+    else:
+        result, meta = results, None
 
     subsample = args.subsample
     if subsample:
@@ -79,7 +122,10 @@ def main():
         else:
             subsample_size = int(args.subsample)
 
-        result = make_subset(result, subsample_size)
+        result = make_subset(result, subsample_size, args.subsample_seed)
+
+    if args.analyze_dataset:
+        analyze_dataset(result, meta)
 
     converter_name = converter.get_name()
     annotation_name = args.annotation_name or "{}.pickle".format(converter_name)
@@ -122,5 +168,8 @@ def get_converter_arguments(arguments):
     return converter, converter_argparser, converter_options
 
 
-if __name__ == '__main__':
-    main()
+def analyze_dataset(annotations, metadata):
+    first_element = next(iter(annotations), None)
+    analyzer = BaseDataAnalyzer.provide(first_element.__class__.__name__)
+    inside_meta = copy.copy(metadata)
+    analyzer.analyze(annotations, inside_meta)

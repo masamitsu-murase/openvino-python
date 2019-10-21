@@ -20,12 +20,14 @@ import re
 
 from ._reid_common import check_dirs, read_directory
 from .format_converter import DirectoryBasedAnnotationConverter
+from ..representation import ReIdentificationAnnotation
 
 MARS_IMAGE_PATTERN = re.compile(r'([\d]+)C(\d)')
 
 
 class MARSConverter(DirectoryBasedAnnotationConverter):
     __provider__ = 'mars'
+    annotation_types = (ReIdentificationAnnotation, )
 
     def convert(self):
         gallery = self.data_dir / 'bbox_test'

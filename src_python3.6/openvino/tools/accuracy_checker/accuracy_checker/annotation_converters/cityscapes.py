@@ -1,21 +1,38 @@
+"""
+Copyright (c) 2019 Intel Corporation
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+"""
+
 from pathlib import Path
 from ..representation import SegmentationAnnotation
 from ..representation.segmentation_representation import GTMaskLoader
 from ..config import PathField, StringField, BoolField
-from .format_converter import BaseFormatConverter, BaseFormatConverterConfig
+from .format_converter import BaseFormatConverter
 
 
 train_meta = {
     'label_map': {
         0: 'road', 1: 'sidewalk', 2: 'building', 3: 'wall', 4: 'fence', 5: 'pole', 6: 'traffic light',
         7: 'traffic sign', 8: 'vegetation', 9: 'terrain', 10: 'sky', 11: 'person', 12: 'rider', 13: 'car',
-        14: 'truck', 15: 'bus', 16: 'train', 17: 'motorcycle', 18: 'bicycle'
+        14: 'truck', 15: 'bus', 16: 'train', 17: 'motorcycle', 18: 'bicycle', 19: 'background'
     },
     'segmentation_colors': (
         (128, 64, 128), (244, 35, 232), (70, 70, 70), (102, 102, 156), (190, 153, 153), (153, 153, 153),
         (250, 170, 30), (220, 220, 0), (107, 142, 35), (152, 251, 152), (70, 130, 180), (220, 20, 60), (255, 0, 0),
-        (0, 0, 142), (0, 0, 70), (0, 60, 100), (0, 80, 100), (0, 0, 230), (119, 11, 32)
+        (0, 0, 142), (0, 0, 70), (0, 60, 100), (0, 80, 100), (0, 0, 230), (119, 11, 32), (255, 255, 255)
     ),
+    'background_label': 19
 }
 
 full_dataset_meta = {
@@ -33,32 +50,56 @@ full_dataset_meta = {
         20: 'traffic sign', 21: 'vegetation', 22: 'terrain', 23: 'sky', 24: 'person', 25: 'rider', 26: 'car',
         27: 'truck', 28: 'bus', 29: 'caravan', 30: 'trailer', 31: 'train', 32: 'motorcycle', 33: 'bicycle',
         -1: 'license plate'
-    }
+    },
+    'prediction_to_gt_labels': {
+        0: 7, 1: 8, 2: 11, 3: 12, 4: 13, 5: 17, 6: 19, 7: 20, 8: 21, 9: 22,
+        10: 23, 11: 24, 12: 25, 13: 26, 14: 27, 15: 28, 16: 31, 17: 32, 18: 33
+    },
+    'ignored_labels': [0, 1, 2, 3, 4, 5, 6, 9, 10, 14, 15, 16, 18, 29, 30, -1, 255]
 }
-
-
-class CityscapesConverterConfig(BaseFormatConverterConfig):
-    dataset_root_dir = PathField(is_directory=True)
-    images_subfolder = StringField(optional=True)
-    masks_subfolder = StringField(optional=True)
-    masks_suffix = StringField(optional=True)
-    images_suffix = StringField(optional=True)
-    use_full_label_map = BoolField(optional=True)
 
 
 class CityscapesConverter(BaseFormatConverter):
     __provider__ = 'cityscapes'
+    annotation_types = (SegmentationAnnotation, )
 
-    _config_validator_type = CityscapesConverterConfig
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'dataset_root_dir': PathField(is_directory=True, description="Path to dataset root."),
+            'images_subfolder': StringField(
+                optional=True,
+                default='imgsFine/leftImg8bit/val',
+                description="Path from dataset root to directory with validation images."
+            ),
+            'masks_subfolder': StringField(
+                optional=True,
+                default='gtFine/val',
+                description="Path from dataset root to directory with ground truth masks."
+            ),
+            'masks_suffix': StringField(
+                optional=True, default='_gtFine_labelTrainIds', description="Suffix for mask file names."
+            ),
+            'images_suffix': StringField(
+                optional=True, default='_leftImg8bit', description="Suffix for image file names."
+            ),
+            'use_full_label_map': BoolField(
+                optional=True,
+                default=False,
+                description="Allows to use full label map with 33 classes instead train label map with 18 classes."
+            )
+        })
+
+        return parameters
 
     def configure(self):
-        self.dataset_root = self.config['dataset_root_dir']
-        self.images_dir = self.config.get('images_subfolder', 'imgsFine/leftImg8bit/val')
-        self.masks_dir = self.config.get('masks_subfolder', 'gtFine/val')
-        self.masks_suffix = self.config.get('masks_suffix', '_gtFine_labelTrainIds')
-        self.images_suffix = self.config.get('images_suffix', '_leftImg8bit')
-        self.use_full_label_map = self.config.get('use_full_label_map', False)
-
+        self.dataset_root = self.get_value_from_config('dataset_root_dir')
+        self.images_dir = self.get_value_from_config('images_subfolder')
+        self.masks_dir = self.get_value_from_config('masks_subfolder')
+        self.masks_suffix = self.get_value_from_config('masks_suffix')
+        self.images_suffix = self.get_value_from_config('images_suffix')
+        self.use_full_label_map = self.get_value_from_config('use_full_label_map')
 
     def convert(self):
         images = list(self.dataset_root.rglob(r'{}/*/*{}.png'.format(self.images_dir, self.images_suffix)))

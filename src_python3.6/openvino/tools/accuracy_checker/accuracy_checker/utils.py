@@ -14,7 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-import collections
 import csv
 import errno
 import itertools
@@ -29,6 +28,7 @@ from warnings import warn
 from shapely.geometry.polygon import Polygon
 import numpy as np
 import yaml
+import yamlloader
 
 try:
     import lxml.etree as et
@@ -40,11 +40,14 @@ def concat_lists(*lists):
     return list(itertools.chain(*lists))
 
 
-def get_path(entry: Union[str, Path], is_directory=False):
+def get_path(entry: Union[str, Path], is_directory=False, check_exists=True):
     try:
         path = Path(entry)
     except TypeError:
         raise TypeError('"{}" is expected to be a path-like'.format(entry))
+
+    if not check_exists:
+        return path
 
     # pathlib.Path.exists throws an exception in case of broken symlink
     if not os.path.exists(str(path)):
@@ -186,6 +189,21 @@ def get_size_3d_from_config(config, allow_none=False):
     return config.get('dst_height'), config.get('dst_width'), config.get('dst_volume')
 
 
+def parse_inputs(inputs_entry):
+    inputs = []
+    for inp in inputs_entry:
+        value = inp.get('value')
+        shape = inp.get('shape')
+        new_input = {'name': inp['name']}
+        if value is not None:
+            new_input['value'] = np.array(value) if isinstance(value, list) else value
+        if shape is not None:
+            new_input['shape'] = shape
+
+        inputs.append(new_input)
+    return inputs
+
+
 def in_interval(value, interval):
     minimum = interval[0]
     maximum = interval[1] if len(interval) >= 2 else None
@@ -195,6 +213,11 @@ def in_interval(value, interval):
 
     return minimum <= value < maximum
 
+def is_config_input(input_name, config_inputs):
+    for config_input in config_inputs:
+        if config_input['name'] == input_name:
+            return True
+    return False
 
 def finalize_metric_result(values, names):
     result_values, result_names = [], []
@@ -247,7 +270,6 @@ def read_txt(file: Union[str, Path], sep='\n', **kwargs):
 def read_xml(file: Union[str, Path], *args, **kwargs):
     return et.parse(str(get_path(file)), *args, **kwargs).getroot()
 
-
 def read_json(file: Union[str, Path], *args, **kwargs):
     with get_path(file).open() as content:
         return json.load(content, *args, **kwargs)
@@ -259,15 +281,8 @@ def read_pickle(file: Union[str, Path], *args, **kwargs):
 
 
 def read_yaml(file: Union[str, Path], *args, **kwargs):
-    # yaml does not keep order of keys in dictionaries but it is important for reading pre/post processing
-    yaml.add_representer(collections.OrderedDict, lambda dumper, data: dumper.represent_dict(data.items()))
-    yaml.add_constructor(
-        yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
-        lambda loader, node: collections.OrderedDict(loader.construct_pairs(node))
-    )
-
     with get_path(file).open() as content:
-        return yaml.load(content, Loader=yaml.SafeLoader, *args, **kwargs)
+        return yaml.load(content, *args, Loader=yamlloader.ordereddict.Loader, **kwargs)
 
 
 def read_csv(file: Union[str, Path], *args, **kwargs):
@@ -359,3 +374,40 @@ def convert_to_range(entry):
 def add_input_shape_to_meta(meta, shape):
     meta['input_shape'] = shape
     return meta
+
+
+def set_image_metadata(annotation, images):
+    image_sizes = []
+    data = images.data
+    if not isinstance(data, list):
+        data = [data]
+    for image in data:
+        data_shape = np.shape(image) if not np.isscalar(image) else 1
+        image_sizes.append(data_shape)
+    annotation.set_image_size(image_sizes)
+
+    return annotation, images
+
+
+def get_indexs(container, element):
+    return [index for index, container_element in enumerate(container) if container_element == element]
+
+
+def find_nearest(array, value, mode=None):
+    if not array:
+        return -1
+    array = np.asarray(array)
+    idx = (np.abs(array - value)).argmin()
+    if mode == 'less':
+        return idx - 1 if array[idx] > value else idx
+    if mode == 'more':
+        return idx + 1 if array[idx] < value else idx
+    return idx
+
+def get_parameter_value_from_config(config, parameters, key):
+    if key not in parameters.keys():
+        return None
+    field = parameters[key]
+    value = config.get(key, field.default)
+    field.validate(value)
+    return value

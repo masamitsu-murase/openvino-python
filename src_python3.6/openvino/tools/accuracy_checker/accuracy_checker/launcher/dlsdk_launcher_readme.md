@@ -12,6 +12,7 @@ You can provide:
 
 * `caffe_model` and `caffe_weights` for Caffe model and weights (*.prototxt and *.caffemodel).
 * `tf_model` for TensorFlow model (*.pb, *.pb.frozen, *.pbtxt).
+* `tf_meta` for TensorFlow MetaGraph (*.meta).
 * `mxnet_weights` for MXNet params (*.params).
 * `onnx_model` for ONNX model (*.onnx).
 * `kaldi_model` for Kaldi model (*.nnet).
@@ -30,9 +31,22 @@ Launcher understands which batch size will be used from model intermediate repre
 
 Additionally you can provide device specific parameters:
 
-* `cpu_extensions` (path to extension *.so file with custom layers for cpu).
+* `cpu_extensions` (path to extension file with custom layers for cpu). You can also use special key `AUTO` for automatic search cpu extensions library in the provided as command line argument directory (option `-e, --extensions`)
 * `gpu_extensions` (path to extension *.xml file with OpenCL kernel description for gpu).
 * `bitstream` for running on FPGA.
+
+Beside that, you can launch model in `async_mode`, enable this option and provide the number of infer requests (`num_requests`), which will be used in evaluation process
+
+## Specifying model inputs in config.
+
+In case when you model has several inputs you should provide list of input layers in launcher config section using key `inputs`.
+Each input description should has following info:
+  * `name` - input layer name in network
+  * `type` - type of input values, it has impact on filling policy. Available options:
+    * `CONST_INPUT` - input will be filled using constant provided in config. It also requires to provide `value`.
+    * `IMAGE_INFO` - specific key for setting information about input shape to layer (used in Faster RCNN based topologies). You do not need provide `value`, because it will be calculated in runtime. Format value is `Nx[H, W, S]`, where `N` is batch size, `H` - original image height, `W` - original image width, `S` - scale of original image (default 1).
+    * `INPUT` - network input for main data stream (e. g. images). If you have several data inputs, you should provide regular expression for identifier as `value` for specifying which one data should be provided in specific input.
+    Optionally you can determine `shape` of input (actually does not used, DLSDK launcher uses info given from network) and `layout` in case when your model was trained with non-standard data layout (For DLSDK default layout is `NCHW`).
 
 OpenVINO™ launcher config example:
 
@@ -50,5 +64,5 @@ launchers:
     cpu_extensions: cpu_extentions_avx512.so
 ```
 
-[adapters]: ./tools/accuracy_checker/accuracy_checker/adapters/README.md
+[adapters]: ../adapters/README.md
 [openvino-mo]: https://software.intel.com/en-us/articles/OpenVINO-ModelOptimizer

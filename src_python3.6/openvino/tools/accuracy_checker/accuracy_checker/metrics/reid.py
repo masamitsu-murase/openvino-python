@@ -26,7 +26,7 @@ from ..representation import (
     ReIdentificationPrediction
 )
 from ..config import BaseField, BoolField, NumberField
-from .metric import BaseMetricConfig, FullDatasetEvaluationMetric
+from .metric import FullDatasetEvaluationMetric
 
 PairDesc = namedtuple('PairDesc', 'image1 image2 same')
 
@@ -50,23 +50,36 @@ class CMCScore(FullDatasetEvaluationMetric):
     annotation_types = (ReIdentificationAnnotation, )
     prediction_types = (ReIdentificationPrediction, )
 
-    def validate_config(self):
-        class _CMCConfigValidator(BaseMetricConfig):
-            top_k = NumberField(floats=False, min_value=1, optional=True)
-            separate_camera_set = BoolField(optional=True)
-            single_gallery_shot = BoolField(optional=True)
-            first_match_break = BoolField(optional=True)
-            number_single_shot_repeats = NumberField(floats=False, optional=True)
-
-        validator = _CMCConfigValidator('cmc', on_extra_argument=_CMCConfigValidator.ERROR_ON_EXTRA_ARGUMENT)
-        validator.validate(self.config)
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'top_k': NumberField(
+                value_type=int, min_value=1, default=1, optional=True,
+                description="Number of k highest ranked samples to consider when matching."
+            ),
+            'separate_camera_set': BoolField(
+                optional=True, default=False, description="Should identities from the same camera view be filtered out."
+            ),
+            'single_gallery_shot': BoolField(
+                optional=True, default=False, description="Each identity has only one instance in the gallery."
+            ),
+            'first_match_break': BoolField(
+                optional=True, default=True, description="Break on first matched gallery sample."
+            ),
+            'number_single_shot_repeats': NumberField(
+                value_type=int, optional=True, default=10,
+                description="Number of repeats for single_gallery_shot setting (required for CUHK)."
+            )
+        })
+        return parameters
 
     def configure(self):
-        self.top_k = self.config.get('top_k', 1)
-        self.separate_camera_set = self.config.get('separate_camera_set', False)
-        self.single_gallery_shot = self.config.get('single_gallery_shot', False)
-        self.first_match_break = self.config.get('first_match_break', True)
-        self.number_single_shot_repeats = self.config.get('number_single_shot_repeats', 10)
+        self.top_k = self.get_value_from_config('top_k')
+        self.separate_camera_set = self.get_value_from_config('separate_camera_set')
+        self.single_gallery_shot = self.get_value_from_config('single_gallery_shot')
+        self.first_match_break = self.get_value_from_config('first_match_break')
+        self.number_single_shot_repeats = self.get_value_from_config('number_single_shot_repeats')
 
     def evaluate(self, annotations, predictions):
         dist_matrix = distance_matrix(annotations, predictions)
@@ -95,15 +108,19 @@ class ReidMAP(FullDatasetEvaluationMetric):
     annotation_types = (ReIdentificationAnnotation, )
     prediction_types = (ReIdentificationPrediction, )
 
-    def validate_config(self):
-        class _ReidMapConfig(BaseMetricConfig):
-            interpolated_auc = BoolField(optional=True)
-
-        validator = _ReidMapConfig('reid_map', on_extra_argument=_ReidMapConfig.ERROR_ON_EXTRA_ARGUMENT)
-        validator.validate(self.config)
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'interpolated_auc': BoolField(
+                optional=True, default=True, description="Should area under precision recall"
+                                                         " curve be computed using trapezoidal rule or directly."
+            )
+        })
+        return parameters
 
     def configure(self):
-        self.interpolated_auc = self.config.get('interpolated_auc', True)
+        self.interpolated_auc = self.get_value_from_config('interpolated_auc')
 
     def evaluate(self, annotations, predictions):
         dist_matrix = distance_matrix(annotations, predictions)
@@ -120,15 +137,21 @@ class PairwiseAccuracy(FullDatasetEvaluationMetric):
     annotation_types = (ReIdentificationClassificationAnnotation, )
     prediction_types = (ReIdentificationPrediction, )
 
-    def validate_config(self):
-        class _PWAccConfig(BaseMetricConfig):
-            min_score = BaseField(optional=True)
-
-        validator = _PWAccConfig('pairwise_accuracy', on_extra_argument=_PWAccConfig.ERROR_ON_EXTRA_ARGUMENT)
-        validator.validate(self.config)
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'min_score': BaseField(
+                optional=True, default='train_median',
+                description="Min score for determining that objects are different. "
+                            "You can provide value or use train_median value which will be calculated "
+                            "if annotations has training subset."
+            )
+        })
+        return parameters
 
     def configure(self):
-        self.min_score = self.config.get('min_score', 'train_median')
+        self.min_score = self.get_value_from_config('min_score')
 
     def evaluate(self, annotations, predictions):
         embed_distances, pairs = get_embedding_distances(annotations, predictions)
@@ -152,24 +175,24 @@ class PairwiseAccuracy(FullDatasetEvaluationMetric):
 
         return float(accuracy) / len(pairs)
 
-
 class PairwiseAccuracySubsets(FullDatasetEvaluationMetric):
     __provider__ = 'pairwise_accuracy_subsets'
 
     annotation_types = (ReIdentificationClassificationAnnotation, )
     prediction_types = (ReIdentificationPrediction, )
 
-    def validate_config(self):
-        class _PWAccConfig(BaseMetricConfig):
-            subset_number = NumberField(optional=True, min_value=1, floats=False)
-
-        validator = _PWAccConfig('pairwise_accuracy', on_extra_argument=_PWAccConfig.ERROR_ON_EXTRA_ARGUMENT)
-        validator.validate(self.config)
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'subset_number': NumberField(
+                optional=True, min_value=1, value_type=int, default=10, description="Number of subsets for separating."
+            )
+        })
+        return parameters
 
     def configure(self):
-        self.meta['scale'] = 1
-        self.meta['postfix'] = ' '
-        self.subset_num = self.config.get('subset_number', 10)
+        self.subset_num = self.get_value_from_config('subset_number')
         self.accuracy_metric = PairwiseAccuracy(self.config, self.dataset)
 
     def evaluate(self, annotations, predictions):

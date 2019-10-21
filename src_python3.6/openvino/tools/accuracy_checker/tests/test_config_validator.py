@@ -91,7 +91,7 @@ class TestStringField:
 
 class TestNumberField:
     def test_expects_number(self):
-        number_field = NumberField(floats=True)
+        number_field = NumberField(value_type=float)
 
         number_field.validate(1.0)
         with pytest.raises(ConfigError):
@@ -101,7 +101,7 @@ class TestNumberField:
         with pytest.raises(ConfigError):
             number_field.validate([])
 
-        number_field = NumberField(floats=False)
+        number_field = NumberField(value_type=int)
         number_field.validate(1)
         with pytest.raises(ConfigError):
             number_field.validate(1.0)
@@ -185,11 +185,11 @@ class TestDictField:
 
         dict_field = DictField(value_type=int)
         assert isinstance(dict_field.value_type, NumberField)
-        assert dict_field.value_type.floats is False
+        assert dict_field.value_type.type is not float
 
         dict_field = DictField(value_type=float)
         assert isinstance(dict_field.value_type, NumberField)
-        assert dict_field.value_type.floats is True
+        assert dict_field.value_type.type is float
 
         dict_field = DictField(value_type=list)
         assert isinstance(dict_field.value_type, ListField)
@@ -274,6 +274,12 @@ class TestPathField:
 
             with pytest.raises(ConfigError):
                 dir_field.validate(prefix_path / 'foo' / 'bar')
+
+    def test_path_not_checked(self):
+        with mock_filesystem(['foo/bar']) as prefix:
+            prefix_path = Path(prefix)
+            file_field = PathField(is_directory=False, check_exists=False)
+            file_field.validate(prefix_path / 'foo' / 'bar')
 
 
 class TestConfigValidator:

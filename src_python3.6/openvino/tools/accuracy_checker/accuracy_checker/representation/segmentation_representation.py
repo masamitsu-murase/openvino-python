@@ -20,6 +20,7 @@ import numpy as np
 
 from .base_representation import BaseRepresentation
 from ..data_readers import BaseReader
+from ..utils import remove_difficult
 
 
 class GTMaskLoader(Enum):
@@ -27,6 +28,7 @@ class GTMaskLoader(Enum):
     OPENCV = 1
     SCIPY = 2
     NIFTI = 3
+    NUMPY = 4
 
 
 class SegmentationRepresentation(BaseRepresentation):
@@ -38,7 +40,8 @@ class SegmentationAnnotation(SegmentationRepresentation):
         GTMaskLoader.PILLOW: 'pillow_imread',
         GTMaskLoader.OPENCV: 'opencv_imread',
         GTMaskLoader.SCIPY: 'scipy_imread',
-        GTMaskLoader.NIFTI: 'nifti_reader'
+        GTMaskLoader.NIFTI: 'nifti_reader',
+        GTMaskLoader.NUMPY: 'numpy_reader'
     }
 
     def __init__(self, identifier, path_to_mask, mask_loader=GTMaskLoader.PILLOW):
@@ -63,9 +66,11 @@ class SegmentationAnnotation(SegmentationRepresentation):
         self._mask = value
 
     def _load_mask(self):
-        loader = BaseReader.provide(self.LOADERS.get(self._mask_loader))
         if self._mask is None:
-            mask = loader(self._mask_path, self.metadata['data_source'])
+            loader = BaseReader.provide(self.LOADERS.get(self._mask_loader), self.metadata['data_source'])
+            if self._mask_loader == GTMaskLoader.PILLOW:
+                loader.convert_to_rgb = False
+            mask = loader.read(self._mask_path)
             return mask.astype(np.uint8)
 
         return self._mask
@@ -84,8 +89,99 @@ class SegmentationPrediction(SegmentationRepresentation):
 
 
 class BrainTumorSegmentationAnnotation(SegmentationAnnotation):
-    def __init__(self, identifier, path_to_mask):
-        super().__init__(identifier, path_to_mask, GTMaskLoader.NIFTI)
+    def __init__(self, identifier, path_to_mask, loader=GTMaskLoader.NIFTI, box=None):
+        super().__init__(identifier, path_to_mask, loader)
+        self.box = box
+
 
 class BrainTumorSegmentationPrediction(SegmentationPrediction):
     pass
+
+
+class CoCoInstanceSegmentationRepresentation(SegmentationRepresentation):
+    def __init__(self, identifier, mask, labels):
+        try:
+            # pylint: disable=W0611
+            import pycocotools.mask as maskUtils
+        except ImportError:
+            raise ValueError('can not create representation')
+        super().__init__(identifier)
+        self.raw_mask = mask
+        self.labels = labels
+        self._mask = None
+
+    @property
+    def mask(self):
+        return self._mask if self._mask is not None else self._load_mask()
+
+    def _load_mask(self):
+        masks = []
+        image_size = self.metadata['image_size']
+        height, width, _ = image_size if len(np.shape(image_size)) == 1 else image_size[0]
+        for mask in self.raw_mask:
+            converted_mask = self._convert_mask(mask, height, width)
+            masks.append(converted_mask)
+
+        self._mask = masks
+
+        return self._mask
+
+    @staticmethod
+    def _convert_mask(mask, height, width):
+        if isinstance(mask, list):
+            rles = maskUtils.frPyObjects(mask, height, width)
+            rle = maskUtils.merge(rles)
+        elif isinstance(mask['counts'], list):
+            # uncompressed RLE
+            rle = maskUtils.frPyObjects(mask, height, width)
+        else:
+            rle = mask
+            # rle
+        return rle
+
+    @mask.setter
+    def mask(self, value):
+        self._mask = value
+
+    @property
+    def size(self):
+        return len(self.raw_mask)
+
+    @property
+    def areas(self):
+        precomputed_areas = self.metadata.get('areas')
+        if precomputed_areas:
+            return precomputed_areas
+        masks = self.mask
+        areas = []
+        for mask in masks:
+            areas.append(pycocotools.mask.area(mask))
+        return areas
+
+
+class CoCoInstanceSegmentationAnnotation(CoCoInstanceSegmentationRepresentation):
+    pass
+
+
+class CoCocInstanceSegmentationPrediction(CoCoInstanceSegmentationRepresentation):
+
+    def __init__(self, identifier, mask, labels, scores):
+        super().__init__(identifier, mask, labels)
+
+        self.scores = scores
+
+    def remove(self, indexes):
+        self.labels = np.delete(self.labels, indexes)
+
+        self.mask = np.delete(self.mask, indexes)
+
+        self.scores = np.delete(self.scores, indexes)
+
+        difficult_boxes = self.metadata.get('difficult_boxes')
+
+        if not difficult_boxes:
+            return
+
+        new_difficult_boxes = remove_difficult(difficult_boxes, indexes)
+
+        self.metadata['difficult_boxes'] = new_difficult_boxes

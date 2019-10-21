@@ -1,5 +1,5 @@
 """
-Copyright (C) 2018-2019 Intel Corporation
+Copyright (c) 2019 Intel Corporation
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,27 +13,30 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
+
 from argparse import ArgumentParser
 
+from ..topology_types import GenericTopology
 from ..config import ConfigValidator, StringField, PathField
 from ..dependency import ClassProvider
-from ..utils import format_key
-
-
-class BaseFormatConverterConfig(ConfigValidator):
-    converter = StringField()
+from ..utils import format_key, get_parameter_value_from_config
 
 
 class BaseFormatConverter(ClassProvider):
     __provider_type__ = 'converter'
+    topology_types = (GenericTopology, )
 
-    _config_validator_type = BaseFormatConverterConfig
+    @classmethod
+    def parameters(cls):
+        return {
+            'converter' : StringField(description="Converter name.")
+        }
 
     @property
     def config_validator(self):
-        return self._config_validator_type(
-            '{}_converter_config'.format(self.get_name()),
-            on_extra_argument=self._config_validator_type.ERROR_ON_EXTRA_ARGUMENT
+        return ConfigValidator(
+            '{}_converter_config'.format(self.get_name()), fields=self.parameters(),
+            on_extra_argument=ConfigValidator.ERROR_ON_EXTRA_ARGUMENT
         )
 
     def __init__(self, config=None):
@@ -41,6 +44,9 @@ class BaseFormatConverter(ClassProvider):
         if config:
             self.validate_config()
             self.configure()
+
+    def get_value_from_config(self, key):
+        return get_parameter_value_from_config(self.config, self.parameters(), key)
 
     def convert(self, *args, **kwargs):
         """
@@ -80,29 +86,33 @@ class BaseFormatConverter(ClassProvider):
         pass
 
 
-class FileBasedAnnotationConverterConfig(BaseFormatConverterConfig):
-    annotation_file = PathField()
-
-
 class FileBasedAnnotationConverter(BaseFormatConverter):
-    _config_validator_type = FileBasedAnnotationConverterConfig
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'annotation_file': PathField(description="Path to annotation file.")
+        })
+        return parameters
 
     def configure(self):
-        self.annotation_file = self.config['annotation_file']
+        self.annotation_file = self.get_value_from_config('annotation_file')
 
     def convert(self, *args, **kwargs):
         pass
 
 
-class DirectoryBasedAnnotationConverterConfig(BaseFormatConverterConfig):
-    data_dir = PathField(is_directory=True)
-
-
 class DirectoryBasedAnnotationConverter(BaseFormatConverter):
-    _config_validator_type = DirectoryBasedAnnotationConverterConfig
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'data_dir': PathField(is_directory=True, description="Path to data directory.")
+        })
+        return parameters
 
     def configure(self):
-        self.data_dir = self.config['data_dir']
+        self.data_dir = self.get_value_from_config('data_dir')
 
     def convert(self, *args, **kwargs):
         pass

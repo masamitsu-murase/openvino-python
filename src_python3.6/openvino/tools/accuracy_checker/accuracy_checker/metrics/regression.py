@@ -29,10 +29,9 @@ from ..representation import (
     GazeVectorPrediction
 )
 
-from .metric import PerImageEvaluationMetric, BaseMetricConfig
-from ..config import BaseField, NumberField, BoolField, ConfigError
+from .metric import PerImageEvaluationMetric
+from ..config import BaseField, NumberField, BoolField, ConfigError, StringField
 from ..utils import string_to_tuple, finalize_metric_result
-
 
 class BaseRegressionMetric(PerImageEvaluationMetric):
     annotation_types = (RegressionAnnotation, )
@@ -53,41 +52,51 @@ class BaseRegressionMetric(PerImageEvaluationMetric):
         return np.mean(self.magnitude), np.std(self.magnitude)
 
 
-class BaseIntervalRegressionMetricConfig(BaseMetricConfig):
-    intervals = BaseField(optional=True)
-    start = NumberField(optional=True)
-    end = NumberField(optional=True)
-    step = NumberField(optional=True)
-    ignore_values_not_in_interval = BoolField(optional=True)
-
-
 class BaseRegressionOnIntervals(PerImageEvaluationMetric):
     annotation_types = (RegressionAnnotation, )
     prediction_types = (RegressionPrediction, )
+
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'intervals': BaseField(optional=True, description="Comma-separated list of interval boundaries."),
+            'start': NumberField(
+                optional=True, default=0.0,
+                description="Start value: way to generate range of intervals from start to end with length step."),
+            'end': NumberField(
+                optional=True,
+                description="Stop value: way to generate range of intervals from start to end with length step."
+            ),
+            'step': NumberField(
+                optional=True, default=1.0,
+                description="Step value: way to generate range of intervals from start to end with length step."
+            ),
+            'ignore_values_not_in_interval': BoolField(
+                optional=True, default=True,
+                description="Allows create additional intervals for values less than minimal value "
+                            "in interval and greater than maximal."
+            )
+        })
+
+        return parameters
 
     def __init__(self, value_differ, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.value_differ = value_differ
 
-    def validate_config(self):
-        validator = BaseIntervalRegressionMetricConfig(
-            'regression_on_intervals_config',
-            on_extra_argument=BaseIntervalRegressionMetricConfig.ERROR_ON_EXTRA_ARGUMENT
-        )
-        validator.validate(self.config)
-
     def configure(self):
         self.meta.update({'scale': 1, 'postfix': ' ', 'calculate_mean': False})
-        self.ignore_out_of_range = self.config.get('ignore_values_not_in_interval', True)
+        self.ignore_out_of_range = self.get_value_from_config('ignore_values_not_in_interval')
 
-        self.intervals = self.config.get('intervals')
+        self.intervals = self.get_value_from_config('intervals')
         if not self.intervals:
-            stop = self.config.get('end')
+            stop = self.get_value_from_config('end')
             if not stop:
                 raise ConfigError('intervals or start-step-end of interval should be specified for metric')
 
-            start = self.config.get('start', 0.0)
-            step = self.config.get('step', 1.0)
+            start = self.get_value_from_config('start')
+            step = self.get_value_from_config('step')
             self.intervals = np.arange(start, stop + step, step)
 
         if not isinstance(self.intervals, (list, np.ndarray)):
@@ -214,27 +223,30 @@ class FacialLandmarksPerPointNormedError(PerImageEvaluationMetric):
 
         return per_point_rmse
 
-
-class NormedErrorMetricConfig(BaseMetricConfig):
-    calculate_std = BoolField(optional=True)
-    percentile = NumberField(optional=True, floats=False, min_value=0, max_value=100)
-
-
 class FacialLandmarksNormedError(PerImageEvaluationMetric):
     __provider__ = 'normed_error'
 
     annotation_types = (FacialLandmarksAnnotation, )
     prediction_types = (FacialLandmarksPrediction, )
 
-    def validate_config(self):
-        config_validator = NormedErrorMetricConfig(
-            'normed_error_config', NormedErrorMetricConfig.ERROR_ON_EXTRA_ARGUMENT
-        )
-        config_validator.validate(self.config)
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'calculate_std': BoolField(
+                optional=True, default=False, description="Allows calculation of standard deviation"
+            ),
+            'percentile': NumberField(
+                optional=True, value_type=int, min_value=0, max_value=100,
+                description="Calculate error rate for given percentile."
+            )
+        })
+
+        return parameters
 
     def configure(self):
-        self.calculate_std = self.config.get('calculate_std', False)
-        self.percentile = self.config.get('percentile')
+        self.calculate_std = self.get_value_from_config('calculate_std')
+        self.percentile = self.get_value_from_config('percentile')
         self.meta.update({
             'scale': 1,
             'postfix': ' ',
@@ -301,19 +313,32 @@ class PeakSignalToNoiseRatio(BaseRegressionMetric):
     annotation_types = (SuperResolutionAnnotation, )
     prediction_types = (SuperResolutionPrediction, )
 
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'scale_border': NumberField(optional=True, min_value=0, default=4, description="Scale border."),
+            'color_order': StringField(
+                optional=True, choices=['BGR', 'RGB'], default='RGB',
+                description="The field specified which color order BGR or RGB will be used during metric calculation."
+            )
+        })
+
+        return parameters
+
     def __init__(self, *args, **kwargs):
         super().__init__(self._psnr_differ, *args, **kwargs)
 
-    def validate_config(self):
-        class _PSNRConfig(BaseMetricConfig):
-            scale_border = NumberField(optional=True, min_value=0)
-
-        config_validator = _PSNRConfig('psnr', on_extra_argument=_PSNRConfig.ERROR_ON_EXTRA_ARGUMENT)
-        config_validator.validate(self.config)
-
     def configure(self):
         super().configure()
-        self.scale_border = self.config.get('scale_border', 4)
+        self.scale_border = self.get_value_from_config('scale_border')
+        color_order = self.get_value_from_config('color_order')
+        channel_order = {
+            'BGR': [2, 1, 0],
+            'RGB': [0, 1, 2]
+        }
+        self.meta['postfix'] = 'Db'
+        self.channel_order = channel_order[color_order]
 
     def _psnr_differ(self, annotation_image, prediction_image):
         prediction = np.asarray(prediction_image).astype(np.float)
@@ -330,9 +355,9 @@ class PeakSignalToNoiseRatio(BaseRegressionMetric):
         ]
         image_difference = (prediction - ground_truth) / 255.  # rgb color space
 
-        r_channel_diff = image_difference[:, :, 0]
-        g_channel_diff = image_difference[:, :, 1]
-        b_channel_diff = image_difference[:, :, 2]
+        r_channel_diff = image_difference[:, :, self.channel_order[0]]
+        g_channel_diff = image_difference[:, :, self.channel_order[1]]
+        b_channel_diff = image_difference[:, :, self.channel_order[2]]
 
         channels_diff = (r_channel_diff * 65.738 + g_channel_diff * 129.057 + b_channel_diff * 25.064) / 256
 

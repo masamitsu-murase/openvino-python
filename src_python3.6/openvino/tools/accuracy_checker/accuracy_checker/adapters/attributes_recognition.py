@@ -13,7 +13,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
-
 import numpy as np
 
 from ..adapters import Adapter
@@ -27,32 +26,33 @@ from ..representation import (
     GazeVectorPrediction
 )
 
-
-class HeadPoseEstimatorAdapterConfig(ConfigValidator):
-    type = StringField()
-    angle_yaw = StringField()
-    angle_pitch = StringField()
-    angle_roll = StringField()
-
-
 class HeadPoseEstimatorAdapter(Adapter):
     """
     Class for converting output of HeadPoseEstimator to HeadPosePrediction representation
     """
     __provider__ = 'head_pose'
+    prediction_types = (RegressionPrediction, )
+
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'angle_yaw': StringField(description="Output layer name for yaw angle."),
+            'angle_pitch': StringField(description="Output layer name for pitch angle."),
+            'angle_roll': StringField(description="Output layer name for roll angle.")
+        })
+        return parameters
 
     def validate_config(self):
-        head_pose_estimator_adapter_config = HeadPoseEstimatorAdapterConfig(
-            'HeadPoseEstimator_Config', on_extra_argument=HeadPoseEstimatorAdapterConfig.ERROR_ON_EXTRA_ARGUMENT)
-        head_pose_estimator_adapter_config.validate(self.launcher_config)
+        super().validate_config(on_extra_argument=ConfigValidator.ERROR_ON_EXTRA_ARGUMENT)
 
     def configure(self):
         """
         Specifies parameters of config entry
         """
-        self.angle_yaw = self.launcher_config['angle_yaw']
-        self.angle_pitch = self.launcher_config['angle_pitch']
-        self.angle_roll = self.launcher_config['angle_roll']
+        self.angle_yaw = self.get_value_from_config('angle_yaw')
+        self.angle_pitch = self.get_value_from_config('angle_pitch')
+        self.angle_roll = self.get_value_from_config('angle_roll')
 
     def process(self, raw, identifiers=None, frame_meta=None):
         """
@@ -71,35 +71,35 @@ class HeadPoseEstimatorAdapter(Adapter):
                 raw_output[self.angle_pitch],
                 raw_output[self.angle_roll]
         ):
-            prediction = ContainerPrediction({'angle_yaw': RegressionPrediction(identifier, yaw[0]),
+            prediction = ContainerPrediction({'angle_yaw'  : RegressionPrediction(identifier, yaw[0]),
                                               'angle_pitch': RegressionPrediction(identifier, pitch[0]),
-                                              'angle_roll': RegressionPrediction(identifier, roll[0])})
+                                              'angle_roll' : RegressionPrediction(identifier, roll[0])})
             result.append(prediction)
 
         return result
 
-
-class VehicleAttributesRecognitionAdapterConfig(ConfigValidator):
-    type = StringField()
-    color_out = StringField()
-    type_out = StringField()
-
-
 class VehicleAttributesRecognitionAdapter(Adapter):
     __provider__ = 'vehicle_attributes'
+    prediction_types = (ClassificationPrediction,)
+
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'color_out' : StringField(description="Vehicle color attribute output layer name."),
+            'type_out'  : StringField(description="Vehicle type attribute output layer name.")
+        })
+        return parameters
 
     def validate_config(self):
-        attributes_recognition_adapter_config = VehicleAttributesRecognitionAdapterConfig(
-            'VehicleAttributesRecognition_Config',
-            on_extra_argument=VehicleAttributesRecognitionAdapterConfig.ERROR_ON_EXTRA_ARGUMENT)
-        attributes_recognition_adapter_config.validate(self.launcher_config)
+        super().validate_config(on_extra_argument=ConfigValidator.ERROR_ON_EXTRA_ARGUMENT)
 
     def configure(self):
         """
         Specifies parameters of config entry
         """
-        self.color_out = self.launcher_config['color_out']
-        self.type_out = self.launcher_config['type_out']
+        self.color_out = self.get_value_from_config('color_out')
+        self.type_out = self.get_value_from_config('type_out')
 
     def process(self, raw, identifiers=None, frame_meta=None):
         res = []
@@ -109,24 +109,25 @@ class VehicleAttributesRecognitionAdapter(Adapter):
                                             'type': ClassificationPrediction(identifier, types.reshape(-1))}))
         return res
 
-
-class AgeGenderAdapterConfig(ConfigValidator):
-    type = StringField()
-    age_out = StringField()
-    gender_out = StringField()
-
-
 class AgeGenderAdapter(Adapter):
     __provider__ = 'age_gender'
+    prediction_types = (ClassificationPrediction, RegressionPrediction, )
+
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'age_out'    : StringField(description="Output layer name for age recognition."),
+            'gender_out' : StringField(description="Output layer name for gender recognition.")
+        })
+        return parameters
 
     def configure(self):
-        self.age_out = self.launcher_config['age_out']
-        self.gender_out = self.launcher_config['gender_out']
+        self.age_out = self.get_value_from_config('age_out')
+        self.gender_out = self.get_value_from_config('gender_out')
 
     def validate_config(self):
-        age_gender_adapter_config = AgeGenderAdapterConfig(
-            'AgeGender_Config', on_extra_argument=AgeGenderAdapterConfig.ERROR_ON_EXTRA_ARGUMENT)
-        age_gender_adapter_config.validate(self.launcher_config)
+        super().validate_config(on_extra_argument=ConfigValidator.ERROR_ON_EXTRA_ARGUMENT)
 
     @staticmethod
     def get_age_scores(age):
@@ -159,6 +160,7 @@ class AgeGenderAdapter(Adapter):
 
 class LandmarksRegressionAdapter(Adapter):
     __provider__ = 'landmarks_regression'
+    prediction_types = (FacialLandmarksPrediction, )
 
     def process(self, raw, identifiers=None, frame_meta=None):
         res = []
@@ -168,20 +170,20 @@ class LandmarksRegressionAdapter(Adapter):
             res.append(FacialLandmarksPrediction(identifier, x_values.reshape(-1), y_values.reshape(-1)))
         return res
 
-
-class PersonAttributesConfig(ConfigValidator):
-    attributes_recognition_out = StringField(optional=True)
-
-
 class PersonAttributesAdapter(Adapter):
     __provider__ = 'person_attributes'
+    prediction_types = (MultiLabelRecognitionPrediction, )
+
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'attributes_recognition_out' : StringField(description="Output layer name for attributes recognition.")
+        })
+        return parameters
 
     def validate_config(self):
-        person_attributes_adapter_config = PersonAttributesConfig(
-            'PersonAttributes_Config',
-            PersonAttributesConfig.IGNORE_ON_EXTRA_ARGUMENT
-        )
-        person_attributes_adapter_config.validate(self.launcher_config)
+        super().validate_config(on_extra_argument=ConfigValidator.IGNORE_ON_EXTRA_ARGUMENT)
 
     def configure(self):
         self.attributes_recognition_out = self.launcher_config.get('attributes_recognition_out', self.output_blob)
@@ -189,7 +191,8 @@ class PersonAttributesAdapter(Adapter):
     def process(self, raw, identifiers=None, frame_meta=None):
         result = []
         raw_output = self._extract_predictions(raw, frame_meta)
-        for identifier, multi_label in zip(identifiers, raw_output[self.attributes_recognition_out or self.output_blob]):
+        self.attributes_recognition_out = self.attributes_recognition_out or self.output_blob
+        for identifier, multi_label in zip(identifiers, raw_output[self.attributes_recognition_out]):
             multi_label[multi_label > 0.5] = 1.
             multi_label[multi_label <= 0.5] = 0.
 
@@ -200,6 +203,7 @@ class PersonAttributesAdapter(Adapter):
 
 class GazeEstimationAdapter(Adapter):
     __provider__ = 'gaze_estimation'
+    prediction_types = (GazeVectorPrediction, )
 
     def process(self, raw, identifiers=None, frame_meta=None):
         result = []

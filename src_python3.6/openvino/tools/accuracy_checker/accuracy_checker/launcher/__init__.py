@@ -16,6 +16,7 @@ limitations under the License.
 
 from .dummy_launcher import DummyLauncher
 from .launcher import Launcher, create_launcher, unsupported_launcher
+from .input_feeder import InputFeeder
 
 try:
     from .caffe_launcher import CaffeLauncher
@@ -25,10 +26,52 @@ except ImportError as import_error:
     )
 
 try:
+    from .mxnet_launcher import MxNetLauncher
+except ImportError as import_error:
+    MxNetLauncher = unsupported_launcher(
+        'mxnet', "MxNet isn't installed. Please, install it before using.\n{}".format(import_error.msg)
+    )
+
+try:
     from .dlsdk_launcher import DLSDKLauncher
 except ImportError as import_error:
     DLSDKLauncher = unsupported_launcher(
         'dlsdk', "IE Python isn't installed. Please, install it before using. \n{}".format(import_error.msg)
     )
 
-__all__ = ['create_launcher', 'Launcher', 'CaffeLauncher', 'DLSDKLauncher', 'DummyLauncher']
+try:
+    from .tf_launcher import TFLauncher
+except ImportError as import_error:
+    TFLauncher = unsupported_launcher(
+        'tf', "TensorFlow isn't installed. Please, install it before using. \n{}".format(import_error.msg)
+    )
+
+try:
+    from .tf_lite_launcher import TFLiteLauncher
+except ImportError as import_error:
+    TFLiteLauncher = unsupported_launcher(
+        'tf_lite', "TensorFlow isn't installed. Please, install it before using. \n{}".format(import_error.msg)
+    )
+
+from .opencv_launcher import OpenCVLauncher
+
+try:
+    from .onnx_launcher import ONNXLauncher
+except ImportError as import_error:
+    ONNXLauncher = unsupported_launcher(
+        'onnx_runtime', "ONNX Runtime isn't installed. Please, install it before using. \n{}".format(import_error.msg)
+    )
+
+__all__ = [
+    'create_launcher',
+    'Launcher',
+    'CaffeLauncher',
+    'MxNetLauncher',
+    'TFLauncher',
+    'TFLiteLauncher',
+    'DLSDKLauncher',
+    'OpenCVLauncher',
+    'ONNXLauncher',
+    'DummyLauncher',
+    'InputFeeder'
+]

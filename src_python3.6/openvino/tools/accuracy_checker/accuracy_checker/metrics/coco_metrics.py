@@ -15,7 +15,6 @@ limitations under the License.
 """
 
 from functools import singledispatch
-from typing import Union
 import numpy as np
 from ..config import NumberField, BaseField
 from ..representation import (
@@ -26,7 +25,7 @@ from ..representation import (
 )
 from ..utils import get_or_parse_value
 from .overlap import Overlap
-from .metric import BaseMetricConfig, PerImageEvaluationMetric
+from .metric import PerImageEvaluationMetric
 
 COCO_THRESHOLDS = {
     '.50': [0.5],
@@ -35,24 +34,31 @@ COCO_THRESHOLDS = {
 }
 
 
-class MSCOCOAveragePresicionMetricConfig(BaseMetricConfig):
-    max_detections = NumberField(optional=True)
-    threshold = BaseField(optional=True)
-
-
 class MSCOCOBaseMetric(PerImageEvaluationMetric):
     annotation_types = (PoseEstimationAnnotation, DetectionAnnotation)
     prediction_types = (PoseEstimationPrediction, DetectionPrediction)
 
-    def validate_config(self):
-        coco_config_validator = MSCOCOAveragePresicionMetricConfig(
-            'coco_metric', on_extra_argument=MSCOCOAveragePresicionMetricConfig.ERROR_ON_EXTRA_ARGUMENT
-        )
-        coco_config_validator.validate(self.config)
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'max_detections': NumberField(
+                value_type=int, optional=True, default=20,
+                description="Max number of predicted results per image. If you have more predictions, "
+                            "the results with minimal confidence will be ignored."
+            ),
+            'threshold' : BaseField(
+                optional=True, default='.50:.05:.95',
+                description="Intersection over union threshold. You can specify one value or comma separated range "
+                            "of values. This parameter supports precomputed values for "
+                            "standard COCO thresholds: {}".format(', '.join(COCO_THRESHOLDS)))
+        })
+
+        return parameters
 
     def configure(self):
-        self.max_detections = self.config.get('max_detections', 20)
-        self.thresholds = get_or_parse_value(self.config.get('threshold', '.50:.05:.95'), COCO_THRESHOLDS)
+        self.max_detections = self.get_value_from_config('max_detections')
+        self.thresholds = get_or_parse_value(self.get_value_from_config('threshold'), COCO_THRESHOLDS)
         label_map = self.dataset.metadata.get('label_map', [])
         self.labels = [
             label for label in label_map
@@ -119,7 +125,8 @@ def prepare(entry, order):
     return np.c_[entry.x_mins[order], entry.y_mins[order], entry.x_maxs[order], entry.y_maxs[order]]
 
 
-@prepare.register(Union[PoseEstimationPrediction, PoseEstimationAnnotation])
+@prepare.register(PoseEstimationPrediction)
+@prepare.register(PoseEstimationAnnotation)
 def prepare_keypoints(entry, order):
     if entry.size == 0:
         return []
@@ -181,7 +188,7 @@ def compute_precision_recall(thresholds, matching_results):
     precision = -np.ones((num_thresholds, num_rec_thresholds))  # -1 for the precision of absent categories
     recall = -np.ones(num_thresholds)
     dt_scores = np.concatenate([e['scores'] for e in matching_results])
-    inds = np.argsort(-dt_scores, kind='mergesort')
+    inds = np.argsort(dt_scores, kind='mergesort')[::-1]
     dtm = np.concatenate([e['dt_matches'] for e in matching_results], axis=1)[:, inds]
     dt_ignored = np.concatenate([e['dt_ignore'] for e in matching_results], axis=1)[:, inds]
     gt_ignored = np.concatenate([e['gt_ignore'] for e in matching_results])

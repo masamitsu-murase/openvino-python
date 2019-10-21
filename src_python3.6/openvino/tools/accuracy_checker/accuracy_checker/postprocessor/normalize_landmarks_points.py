@@ -17,9 +17,8 @@ limitations under the License.
 import numpy as np
 
 from ..config import BoolField
-from ..postprocessor.postprocessor import Postprocessor, BasePostprocessorConfig
+from ..postprocessor.postprocessor import Postprocessor
 from ..representation import FacialLandmarksAnnotation, FacialLandmarksPrediction
-
 
 class NormalizeLandmarksPoints(Postprocessor):
     __provider__ = 'normalize_landmarks_points'
@@ -27,17 +26,21 @@ class NormalizeLandmarksPoints(Postprocessor):
     annotation_types = (FacialLandmarksAnnotation, )
     prediction_types = (FacialLandmarksPrediction, )
 
-    def validate_config(self):
-        class _ConfigValidator(BasePostprocessorConfig):
-            use_annotation_rect = BoolField(optional=True)
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'use_annotation_rect' : BoolField(
+                optional=True, default=False,
+                description="Allows to use size of rectangle saved in annotation metadata for point scaling"
+                            " instead source image size."
+            )
+        })
 
-        config_validator = _ConfigValidator(
-            self.__provider__, on_extra_argument=_ConfigValidator.ERROR_ON_EXTRA_ARGUMENT
-        )
-        config_validator.validate(self.config)
+        return parameters
 
     def configure(self):
-        self.use_annotation_rect = self.config.get('use_annotation_rect', False)
+        self.use_annotation_rect = self.get_value_from_config('use_annotation_rect')
 
     def process_image(self, annotation, prediction):
         for target in annotation:

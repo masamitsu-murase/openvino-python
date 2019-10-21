@@ -85,3 +85,30 @@ class DetectionPrediction(Detection):
 
     def __eq__(self, other):
         return np.array_equal(self.scores, other.scores) if super().__eq__(other) else False
+
+
+class ActionDetectionAnnotation(DetectionAnnotation):
+    pass
+
+
+class ActionDetectionPrediction(DetectionPrediction):
+    def __init__(
+            self,
+            identifier='',
+            labels=None,
+            scores=None,
+            bbox_scores=None,
+            x_mins=None,
+            y_mins=None,
+            x_maxs=None,
+            y_maxs=None
+    ):
+        super().__init__(identifier, labels, scores, x_mins, y_mins, x_maxs, y_maxs)
+        self.bbox_scores = np.array(bbox_scores) if bbox_scores is not None else np.array([])
+
+    def remove(self, indexes):
+        super().remove(indexes)
+        self.bbox_scores = np.delete(self.bbox_scores, indexes)
+
+    def __eq__(self, other):
+        return np.array_equal(self.bbox_scores, other.bbox_scores) if super().__eq__(other) else False

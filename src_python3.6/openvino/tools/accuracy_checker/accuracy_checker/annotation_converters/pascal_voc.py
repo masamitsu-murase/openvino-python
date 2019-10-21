@@ -13,14 +13,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
-
+from pathlib import Path
 from tqdm import tqdm
 
+from ..topology_types import ObjectDetection
 from ..config import PathField, BoolField
 from ..representation import DetectionAnnotation, SegmentationAnnotation
 from ..representation.segmentation_representation import GTMaskLoader
 from ..utils import get_path, read_txt, read_xml
-from .format_converter import BaseFormatConverter, BaseFormatConverterConfig
+from .format_converter import BaseFormatConverter
 
 _VOC_CLASSES_DETECTION = (
     'aeroplane', 'bicycle', 'bird', 'boat',
@@ -54,35 +55,45 @@ def prepare_detection_labels(has_background=True):
 def reverse_label_map(label_map):
     return {value: key for key, value in label_map.items()}
 
-
-class PascalVOCSegmentationConverterConfig(BaseFormatConverterConfig):
-    image_set_file = PathField()
-    images_dir = PathField(optional=True, is_directory=True)
-    mask_dir = PathField(optional=True, is_directory=True)
-
-
 class PascalVOCSegmentationConverter(BaseFormatConverter):
     __provider__ = 'voc_segmentation'
+    annotation_types = (SegmentationAnnotation, )
 
-    _config_validator_type = PascalVOCSegmentationConverterConfig
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'imageset_file': PathField(description="Path to file with validation image list."),
+            'images_dir': PathField(
+                optional=True, is_directory=True,
+                description="Path to directory with images related to devkit root (default JPEGImages)."
+            ),
+            'mask_dir': PathField(
+                optional=True, is_directory=True,
+                description="Path to directory with ground truth segmentation masks related to devkit root "
+                            "(default SegmentationClass)."
+            )
+        })
+
+        return parameters
 
     def configure(self):
-        self.image_set_file = self.config['image_set_file']
-        self.image_dir = self.config.get('images_dir')
+        self.image_set_file = self.get_value_from_config('imageset_file')
+        self.image_dir = self.get_value_from_config('images_dir')
         if not self.image_dir:
-            self.image_dir = get_path(self.image_set_file.parent / 'JPEGImages')
+            self.image_dir = get_path(self.image_set_file.parents[-2] / 'JPEGImages', is_directory=True)
 
         self.mask_dir = self.config.get('mask_dir')
         if not self.mask_dir:
-            self.mask_dir = get_path(self.image_set_file.parent / 'SegmentationClass')
+            self.mask_dir = get_path(self.image_set_file.parents[-2] / 'SegmentationClass', is_directory=True)
 
     def convert(self):
 
         annotations = []
         for image in read_txt(self.image_set_file):
             annotation = SegmentationAnnotation(
-                str(self.image_dir.name / '{}.jpg'.format(image)),
-                str(self.mask_dir.name / '{}.png'.format(image)),
+                str(Path(self.image_dir.name) / '{}.jpg'.format(image)),
+                str(Path(self.mask_dir.name) / '{}.png'.format(image)),
                 mask_loader=GTMaskLoader.SCIPY
             )
 
@@ -96,26 +107,34 @@ class PascalVOCSegmentationConverter(BaseFormatConverter):
 
         return annotations, meta
 
-
-class PascalVOCDetectionConverterConfig(BaseFormatConverterConfig):
-    image_set_file = PathField()
-    annotations_dir = PathField(is_directory=True)
-    images_dir = PathField(optional=True, is_directory=True)
-    has_background = BoolField(optional=True)
-
-
 class PascalVOCDetectionConverter(BaseFormatConverter):
-    __provider__ = 'voc07'
+    __provider__ = 'voc_detection'
+    annotation_types = (DetectionAnnotation, )
+    topology_types = (ObjectDetection, )
 
-    _config_validator_type = PascalVOCDetectionConverterConfig
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'imageset_file': PathField(description="Path to file with validation image list."),
+            'annotations_dir': PathField(is_directory=True, description="Path to directory with annotation files."),
+            'images_dir': PathField(
+                optional=True, is_directory=True,
+                description="Path to directory with images related to devkit root (default JPEGImages)."
+            ),
+            'has_background': BoolField(
+                optional=True, default=True, description="Allows convert dataset with/without adding background_label."
+            )
+        })
+        return parameters
 
     def configure(self):
-        self.image_set_file = self.config['image_set_file']
-        self.image_dir = self.config.get('images_dir')
+        self.image_set_file = self.get_value_from_config('imageset_file')
+        self.image_dir = self.get_value_from_config('images_dir')
         if not self.image_dir:
-            self.image_dir = get_path(self.image_set_file.parent / 'JPEGImages')
-        self.annotations_dir = self.config['annotations_dir']
-        self.has_background = self.config.get('has_background', True)
+            self.image_dir = get_path(self.image_set_file.parents[-2] / 'JPEGImages')
+        self.annotations_dir = self.get_value_from_config('annotations_dir')
+        self.has_background = self.get_value_from_config('has_background')
 
     def convert(self):
         class_to_ind = prepare_detection_labels(self.has_background)

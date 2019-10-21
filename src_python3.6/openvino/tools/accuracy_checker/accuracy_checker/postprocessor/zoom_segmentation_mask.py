@@ -1,5 +1,5 @@
 """
-Copyright (C) 2018-2019 Intel Corporation
+Copyright (c) 2019 Intel Corporation
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,10 +16,10 @@ limitations under the License.
 
 import numpy as np
 
-from .postprocessor import Postprocessor, BasePostprocessorConfig
+from .postprocessor import Postprocessor
 from ..representation import SegmentationAnnotation, SegmentationPrediction
 from ..config import NumberField
-
+from ..logging import warning
 
 class ZoomSegMask(Postprocessor):
     """
@@ -31,30 +31,36 @@ class ZoomSegMask(Postprocessor):
     annotation_types = (SegmentationAnnotation, )
     prediction_types = (SegmentationPrediction, )
 
-    def validate_config(self):
-        class _ZoomSegMaskConfigValidator(BasePostprocessorConfig):
-            zoom = NumberField(floats=False, min_value=1)
-
-        zoom_segmentation_mask_config_validator = _ZoomSegMaskConfigValidator(
-            self.__provider__, on_extra_argument=_ZoomSegMaskConfigValidator.ERROR_ON_EXTRA_ARGUMENT
-        )
-        zoom_segmentation_mask_config_validator.validate(self.config)
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'zoom': NumberField(value_type=int, min_value=1, description="Size for zoom operation.")
+        })
+        return parameters
 
     def configure(self):
-        self.zoom = self.config['zoom']
+        self.zoom = self.get_value_from_config('zoom')
 
     def process_image(self, annotation, prediction):
         for annotation_, prediction_ in zip(annotation, prediction):
             height, width = annotation_.mask.shape[:2]
             prob = prediction_.mask
-            zoom_prob = np.zeros((prob.shape[0], height, width), dtype=np.float32)
-            for c in range(prob.shape[0]):
+            if len(prob.shape) == 2:
+                warning(
+                    'Your prediction mask contains prediction classes instead their probabilities. '
+                    'The result can be unpredictable.'
+                )
+                prob = prob[np.newaxis, :, :]
+            channels, prediction_height, prediction_width = prob.shape
+            zoom_prob = np.zeros((channels, height, width), dtype=np.float32)
+            for c in range(channels):
                 for h in range(height):
                     for w in range(width):
                         r0 = h // self.zoom
-                        r1 = r0 + 1
+                        r1 = r0 + 1 if r0 + 1 != prediction_height else r0
                         c0 = w // self.zoom
-                        c1 = c0 + 1
+                        c1 = c0 + 1 if c0 + 1 != prediction_width else c0
                         rt = float(h) / self.zoom - r0
                         ct = float(w) / self.zoom - c0
                         v0 = rt * prob[c, r1, c0] + (1 - rt) * prob[c, r0, c0]

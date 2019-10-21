@@ -6,58 +6,45 @@ models:
         tags:
           - FP32
         device: CPU
-        model:   text-recognition-0012/FP32/text-recognition-0012.xml
-        weights: text-recognition-0012/FP32/text-recognition-0012.bin
+        model:   Retail/text_recognition/bilstm_crnn_bilstm_decoder/0012/dldt/FP32/text-recognition-0012.xml
+        weights: Retail/text_recognition/bilstm_crnn_bilstm_decoder/0012/dldt/FP32/text-recognition-0012.bin
         adapter: beam_search_decoder
         cpu_extensions: AUTO
 
       - framework: dlsdk
         tags:
-          - GPU32
+          - FP16
+        device: CPU
+        model:   Retail/text_recognition/bilstm_crnn_bilstm_decoder/0012/dldt/FP16/text-recognition-0012.xml
+        weights: Retail/text_recognition/bilstm_crnn_bilstm_decoder/0012/dldt/FP16/text-recognition-0012.bin
+        adapter: beam_search_decoder
+        cpu_extensions: AUTO
+
+      - framework: dlsdk
+        tags:
+          - INT8
+        device: CPU
+        model:   Retail/text_recognition/bilstm_crnn_bilstm_decoder/0012/dldt/INT8/text-recognition-0012.xml
+        weights: Retail/text_recognition/bilstm_crnn_bilstm_decoder/0012/dldt/INT8/text-recognition-0012.bin
+        adapter: beam_search_decoder
+        cpu_extensions: AUTO
+
+      - framework: dlsdk
+        tags:
+          - FP32
         device: GPU
-        model:   text-recognition-0012/FP32/text-recognition-0012.xml
-        weights: text-recognition-0012/FP32/text-recognition-0012.bin
+        model:   Retail/text_recognition/bilstm_crnn_bilstm_decoder/0012/dldt/FP32/text-recognition-0012.xml
+        weights: Retail/text_recognition/bilstm_crnn_bilstm_decoder/0012/dldt/FP32/text-recognition-0012.bin
         adapter: beam_search_decoder
 
       - framework: dlsdk
         tags:
-          - GPU16
+          - FP16
         device: GPU
-        model:   text-recognition-0012/FP16/text-recognition-0012.xml
-        weights: text-recognition-0012/FP16/text-recognition-0012.bin
+        model:   Retail/text_recognition/bilstm_crnn_bilstm_decoder/0012/dldt/FP16/text-recognition-0012.xml
+        weights: Retail/text_recognition/bilstm_crnn_bilstm_decoder/0012/dldt/FP16/text-recognition-0012.bin
         adapter: beam_search_decoder
 
-      - framework: dlsdk
-        device: MYRIAD
-        model:   text-recognition-0012/FP16/text-recognition-0012.xml
-        weights: text-recognition-0012/FP16/text-recognition-0012.bin
-        adapter: beam_search_decoder
-
-      - framework: dlsdk
-        device: HDDL
-        model:   text-recognition-0012/FP16/text-recognition-0012.xml
-        weights: text-recognition-0012/FP16/text-recognition-0012.bin
-        adapter: beam_search_decoder
-
-      - framework: dlsdk
-        tags:
-          - FPGA16
-        device: HETERO:FPGA,CPU
-        model:   text-recognition-0012/FP32/text-recognition-0012.xml
-        weights: text-recognition-0012/FP32/text-recognition-0012.bin
-        adapter: beam_search_decoder
-        cpu_extensions: AUTO
-        bitstream: 2019R1_A10DK_FP16_AlexNet_GoogleNet.aocx
-
-      - framework: dlsdk
-        tags:
-          - FPGA11
-        device: HETERO:FPGA,CPU
-        model:   text-recognition-0012/FP32/text-recognition-0012.xml
-        weights: text-recognition-0012/FP32/text-recognition-0012.bin
-        adapter: beam_search_decoder
-        cpu_extensions: AUTO
-        bitstream: 2019R1_A10DK_FP11_AlexNet_GoogleNet_SqueezeNet.aocx
 
     datasets:
       - name: ICDAR2013

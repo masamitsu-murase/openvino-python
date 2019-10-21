@@ -14,12 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from .postprocessor import PostprocessorWithSpecificTargets, PostprocessorWithTargetsConfigValidator
+from .postprocessor import PostprocessorWithSpecificTargets
 from ..representation import BrainTumorSegmentationAnnotation, BrainTumorSegmentationPrediction
 from ..config import NumberField
 from ..preprocessor import Crop3D
 from ..utils import get_size_3d_from_config
-
 
 class CropSegmentationMask(PostprocessorWithSpecificTargets):
     __provider__ = 'crop_segmentation_mask'
@@ -27,14 +26,25 @@ class CropSegmentationMask(PostprocessorWithSpecificTargets):
     annotation_types = (BrainTumorSegmentationAnnotation,)
     prediction_types = (BrainTumorSegmentationPrediction,)
 
-    def validate_config(self):
-        class _ConfigValidator(PostprocessorWithTargetsConfigValidator):
-            size = NumberField(floats=False, min_value=1)
-            dst_width = NumberField(floats=False, optional=True, min_value=1)
-            dst_height = NumberField(floats=False, optional=True, min_value=1)
-            dst_volume = NumberField(floats=False, optional=True, min_value=1)
-
-        _ConfigValidator(self.name, on_extra_argument=_ConfigValidator.ERROR_ON_EXTRA_ARGUMENT).validate(self.config)
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'dst_width': NumberField(
+                value_type=int, optional=True, min_value=1, description="Destination width for mask cropping"
+            ),
+            'dst_height': NumberField(
+                value_type=int, optional=True, min_value=1, description="Destination height for mask cropping."
+            ),
+            'dst_volume': NumberField(
+                value_type=int, optional=True, min_value=1, description="Destination volume for mask cropping."
+            ),
+            'size': NumberField(
+                value_type=int, optional=True, min_value=1,
+                description="Destination size for mask cropping for both dimensions."
+            )
+        })
+        return parameters
 
     def configure(self):
         self.dst_height, self.dst_width, self.dst_volume = get_size_3d_from_config(self.config)

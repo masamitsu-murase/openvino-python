@@ -16,51 +16,54 @@ limitations under the License.
 
 
 from ..representation import HitRatioAnnotation
-from ..utils import read_txt
+from ..utils import read_txt, get_path
 from ..config import PathField, NumberField
 
-from .format_converter import BaseFormatConverter, BaseFormatConverterConfig
+from .format_converter import BaseFormatConverter
 
+class MovieLensConverter(BaseFormatConverter):
+    __provider__ = "movie_lens_converter"
+    annotation_types = (HitRatioAnnotation, )
 
-class NCFDatasetConverterConfig(BaseFormatConverterConfig):
-    raiting_file = PathField()
-    negative_file = PathField()
-    users_max_number = NumberField(optional=True)
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'rating_file': PathField(description="Path to rating file."),
+            'negative_file': PathField(description="Path to negative file."),
+            'users_max_number': NumberField(
+                optional=True, min_value=1, value_type=int, description="Max number of users."
+            )
+        })
 
-
-class NCFConverter(BaseFormatConverter):
-    __provider__ = "ncf_converter"
-
-    _config_validator_type = NCFDatasetConverterConfig
+        return parameters
 
     def configure(self):
-        self.raiting_file = self.config['raiting_file']
-        self.negative_file = self.config['negative_file']
-        if 'users_max_number' in self.config:
-            self.users_max_number = self.config['users_max_number']
-        else:
-            self.users_max_number = -1
+        self.rating_file = self.get_value_from_config('raiting_file')
+        self.negative_file = self.get_value_from_config('negative_file')
+        self.users_max_number = self.get_value_from_config('users_max_number')
 
     def convert(self):
         annotations = []
         users = []
 
-        for file_row in read_txt(self.raiting_file):
+        for file_row in read_txt(self.rating_file):
             user_id, item_id, _ = file_row.split()
             users.append(user_id)
-            identifier = ['u:'+user_id, 'i:'+item_id]
+            identifier = ['u:'+user_id, 'i:' + item_id]
             annotations.append(HitRatioAnnotation(identifier))
-            if self.users_max_number > 0 and len(users) >= self.users_max_number:
-                break;
+            if self.users_max_number and len(users) == self.users_max_number:
+                break
 
         item_numbers = 1
 
         items_neg = []
-        for file_row in read_txt(self.negative_file):
-            items = file_row.split()
-            items_neg.append(items)
-            if self.users_max_number > 0 and len(items_neg) >= self.users_max_number:
-                break;
+        with get_path(self.negative_file).open() as content:
+            for file_row in content:
+                items = file_row.split()
+                items_neg.append(items)
+                if self.users_max_number and len(items_neg) == self.users_max_number:
+                    break
 
         if items_neg:
             iterations = len(items_neg[0])
@@ -68,7 +71,7 @@ class NCFConverter(BaseFormatConverter):
             for i in range(iterations):
                 for user in users:
                     item = items_neg[int(user)][i]
-                    identifier = ['u:' + user, 'i:'+ item]
+                    identifier = ['u:' + user, 'i:' + item]
                     annotations.append(HitRatioAnnotation(identifier, False))
 
         return annotations, {'users_number': len(users), 'item_numbers': item_numbers}

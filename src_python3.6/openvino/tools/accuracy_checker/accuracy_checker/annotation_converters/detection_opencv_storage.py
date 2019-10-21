@@ -13,30 +13,46 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
+
 from ..config import PathField, NumberField
 from ..representation import DetectionAnnotation
 from ..utils import convert_bboxes_xywh_to_x1y1x2y2, read_xml, read_txt
 
-from .format_converter import BaseFormatConverter, BaseFormatConverterConfig
-
-
-class DetectionOpenCVConverterConfig(BaseFormatConverterConfig):
-    annotation_file = PathField()
-    image_names_file = PathField(optional=True)
-    label_start = NumberField(floats=False, optional=True)
-    background_label = NumberField(floats=False, optional=True)
+from .format_converter import BaseFormatConverter
 
 
 class DetectionOpenCVStorageFormatConverter(BaseFormatConverter):
     __provider__ = 'detection_opencv_storage'
+    annotation_types = (DetectionAnnotation, )
 
-    _config_validator_type = DetectionOpenCVConverterConfig
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'annotation_file': PathField(description="Path to annotation in xml format."),
+            'image_names_file': PathField(
+                optional=True,
+                description="Path to txt file, which contains image name list for dataset."
+            ),
+            'label_start': NumberField(
+                value_type=int, optional=True, default=1,
+                description="Specifies label index start in label map. Default value is 1. "
+                            "You can provide another value, if you want to use this dataset "
+                            "for separate label validation."
+            ),
+            'background_label' : NumberField(
+                value_type=int, optional=True,
+                description="Specifies which index will be used for background label. "
+                            "You can not provide this parameter if your dataset has not background label."
+            )
+        })
+        return parameters
 
     def configure(self):
-        self.annotation_file = self.config['annotation_file']
-        self.image_names_file = self.config.get('image_names_file')
-        self.label_start = self.config.get('label_start', 1)
-        self.background_label = self.config.get('background_label')
+        self.annotation_file = self.get_value_from_config('annotation_file')
+        self.image_names_file = self.get_value_from_config('image_names_file')
+        self.label_start = self.get_value_from_config('label_start')
+        self.background_label = self.get_value_from_config('background_label')
 
     def convert(self):
         root = read_xml(self.annotation_file)

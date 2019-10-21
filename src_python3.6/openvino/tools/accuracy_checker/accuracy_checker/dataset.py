@@ -14,27 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from copy import deepcopy
 from pathlib import Path
-import numpy as np
 
-from .annotation_converters import BaseFormatConverter, save_annotation, make_subset
-from .data_readers import BaseReader, DataReaderField
+from .annotation_converters import BaseFormatConverter, save_annotation, make_subset, analyze_dataset
 from .config import ConfigValidator, StringField, PathField, ListField, DictField, BaseField, NumberField, ConfigError
 from .utils import JSONDecoderWithAutoConversion, read_json, get_path, contains_all
 from .representation import BaseRepresentation
-
-
-class DataRepresentation:
-    def __init__(self, data, meta=None, identifier=''):
-        self.identifier = identifier
-        self.data = data
-        self.metadata = meta or {}
-        if np.isscalar(data):
-            self.metadata['image_size'] = 1
-        elif isinstance(data, list) and np.isscalar(data[0]):
-            self.metadata['image_size'] = len(data)
-        else:
-            self.metadata['image_size'] = data.shape if not isinstance(data, list) else data[0].shape
+from .data_readers import DataReaderField
 
 
 class DatasetConfig(ConfigValidator):
@@ -42,46 +29,37 @@ class DatasetConfig(ConfigValidator):
     Specifies configuration structure for dataset
     """
     name = StringField()
-    annotation = BaseField(optional=True)
-    data_source = PathField()
-    dataset_meta = BaseField(optional=True)
-    metrics = ListField(allow_empty=False)
+    annotation = PathField(optional=True, check_exists=False)
+    data_source = PathField(optional=True, check_exists=False)
+    dataset_meta = PathField(optional=True, check_exists=False)
+    metrics = ListField(allow_empty=False, optional=True)
     postprocessing = ListField(allow_empty=False, optional=True)
     preprocessing = ListField(allow_empty=False, optional=True)
     reader = DataReaderField(optional=True)
     annotation_conversion = DictField(optional=True)
     subsample_size = BaseField(optional=True)
-    subsample_seed = NumberField(floats=False, min_value=0, optional=True)
+    subsample_seed = NumberField(value_type=int, min_value=0, optional=True)
+    analyze_dataset = BaseField(optional=True)
 
 
 class Dataset:
-    def __init__(self, config_entry, preprocessor):
+    def __init__(self, config_entry):
         self._config = config_entry
-        self._preprocessor = preprocessor
-
         self.batch = 1
-
+        self.iteration = 0
         dataset_config = DatasetConfig('Dataset')
-        data_reader_config = self._config.get('reader', 'opencv_imread')
-        if isinstance(data_reader_config, str):
-            self.read_image_fn = BaseReader.provide(data_reader_config)
-        elif isinstance(data_reader_config, dict):
-            self.read_image_fn = BaseReader.provide(data_reader_config['type'], data_reader_config)
-        else:
-            raise ConfigError('reader should be dict or string')
-
-        dataset_config.fields['data_source'].is_directory = self.read_image_fn.data_source_is_dir
-        dataset_config.fields['data_source'].optional = self.read_image_fn.data_source_optional
         dataset_config.validate(self._config)
         annotation, meta = None, None
+        use_converted_annotation = True
         self._images_dir = Path(self._config.get('data_source', ''))
-        if 'annotation_conversion' in self._config:
-            annotation, meta = self._convert_annotation()
-        else:
-            stored_annotation = self._config.get('annotation')
-            if stored_annotation:
-                annotation = read_annotation(get_path(stored_annotation))
+        if 'annotation' in self._config:
+            annotation_file = Path(self._config['annotation'])
+            if annotation_file.exists():
+                annotation = read_annotation(get_path(annotation_file))
                 meta = self._load_meta()
+                use_converted_annotation = False
+        if not annotation and 'annotation_conversion' in self._config:
+            annotation, meta = self._convert_annotation()
 
         if not annotation:
             raise ConfigError('path to converted annotation or data for conversion should be specified')
@@ -95,7 +73,10 @@ class Dataset:
             subsample_size = int(subsample_size)
             annotation = make_subset(annotation, subsample_size, subsample_seed)
 
-        if contains_all(self._config, ['annotation', 'annotation_conversion']):
+        if self._config.get('analyze_dataset', False):
+            analyze_dataset(annotation, meta)
+
+        if use_converted_annotation and contains_all(self._config, ['annotation', 'annotation_conversion']):
             annotation_name = self._config['annotation']
             meta_name = self._config.get('dataset_meta')
             if meta_name:
@@ -111,16 +92,26 @@ class Dataset:
     def annotation(self):
         return self._annotation
 
+    @property
+    def config(self):
+        return deepcopy(self._config) #read-only
+
     def __len__(self):
         return self.size
 
     @property
     def metadata(self):
-        return self._meta
+        return deepcopy(self._meta) #read-only
 
     @property
     def labels(self):
         return self._meta.get('label_map', {})
+
+    def __call__(self, context, *args, **kwargs):
+        batch_annotation = self.__getitem__(self.iteration)
+        self.iteration += 1
+        context.annotation_batch = batch_annotation
+        context.identifiers_batch = [annotation.identifier for annotation in batch_annotation]
 
     def __getitem__(self, item):
         if self.size <= item * self.batch:
@@ -130,38 +121,21 @@ class Dataset:
         batch_end = min(self.size, batch_start + self.batch)
         batch_annotation = self._annotation[batch_start:batch_end]
 
-        identifiers = [annotation.identifier for annotation in batch_annotation]
-        images = self._read_images(identifiers)
-
-        for image, annotation in zip(images, batch_annotation):
-            self.set_annotation_metadata(annotation, image)
-
-        preprocessed = self._preprocessor.process(images, batch_annotation)
-
-        return batch_annotation, preprocessed
+        return batch_annotation
 
     @staticmethod
     def set_image_metadata(annotation, images):
         image_sizes = []
-        if not isinstance(images, list):
-            images = [images]
-        for image in images:
-            if np.isscalar(image):
-                image_sizes.append((1,))
-            else:
-                image_sizes.append(image.shape)
+        data = images.data
+        if not isinstance(data, list):
+            data = [data]
+        for image in data:
+            image_sizes.append(image.shape)
         annotation.set_image_size(image_sizes)
 
-    def set_annotation_metadata(self, annotation, image):
+    def set_annotation_metadata(self, annotation, image, data_source):
         self.set_image_metadata(annotation, image.data)
-        annotation.set_data_source(self._images_dir)
-
-    def _read_images(self, identifiers):
-        images = []
-        for identifier in identifiers:
-            images.append(DataRepresentation(self.read_image_fn(identifier, self._images_dir), identifier=identifier))
-
-        return images
+        annotation.set_data_source(data_source)
 
     def _load_meta(self):
         meta_data_file = self._config.get('dataset_meta')
@@ -171,7 +145,11 @@ class Dataset:
         conversion_params = self._config.get('annotation_conversion')
         converter = conversion_params['converter']
         annotation_converter = BaseFormatConverter.provide(converter, conversion_params)
-        annotation, meta = annotation_converter.convert()
+        results = annotation_converter.convert()
+        if isinstance(results, tuple) and len(results) == 2:
+            annotation, meta = results
+        else:
+            annotation, meta = results, None
 
         return annotation, meta
 

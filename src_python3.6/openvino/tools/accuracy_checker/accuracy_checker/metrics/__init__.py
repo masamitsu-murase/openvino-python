@@ -14,9 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from .metric_executor import MetricsExecutor
+from .metric_executor import MetricsExecutor, Metric
 
-from .classification import ClassificationAccuracy, ClassificationAccuracyClasses
+from .classification import ClassificationAccuracy, ClassificationAccuracyClasses, ClipAccuracy
 from .detection import (DetectionMAP, MissRate, Recall, DetectionAccuracyMetric)
 from .reid import CMCScore, ReidMAP, PairwiseAccuracy, PairwiseAccuracySubsets
 from .semantic_segmentation import SegmentationAccuracy, SegmentationIOU, SegmentationMeanAccuracy, SegmentationFWAcc
@@ -41,14 +41,23 @@ from .regression import (
 from .multilabel_recognition import MultiLabelRecall, MultiLabelPrecision, MultiLabelAccuracy, F1Score
 from .text_detection import TextDetectionMetric
 from .coco_metrics import MSCOCOAveragePresicion
+from .coco_orig_metrics import (
+    MSCOCOorigAveragePrecision,
+    MSCOCOorigRecall,
+
+    MSCOCOOrigSegmAveragePrecision,
+    MSCOCOorigSegmRecall
+)
 from .hit_ratio import HitRatioMetric, NDSGMetric
 
 
 __all__ = [
+    'Metric',
     'MetricsExecutor',
 
     'ClassificationAccuracy',
     'ClassificationAccuracyClasses',
+    'ClipAccuracy',
 
     'DetectionMAP',
     'MissRate',
@@ -86,6 +95,10 @@ __all__ = [
     'TextDetectionMetric',
 
     'MSCOCOAveragePresicion',
+    'MSCOCOorigAveragePrecision',
+    'MSCOCOorigRecall',
+    'MSCOCOOrigSegmAveragePrecision',
+    'MSCOCOorigSegmRecall',
 
     'HitRatioMetric',
     'NDSGMetric'

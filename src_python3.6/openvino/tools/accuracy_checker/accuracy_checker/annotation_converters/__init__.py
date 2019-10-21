@@ -1,5 +1,5 @@
 """
-Copyright (C) 2018-2019 Intel Corporation
+Copyright (c) 2019 Intel Corporation
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,28 +13,32 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
+
 from .format_converter import BaseFormatConverter
-from .convert import make_subset, save_annotation
+from .convert import make_subset, save_annotation, analyze_dataset
 from .market1501 import Market1501Converter
 from .mars import MARSConverter
 from .pascal_voc import PascalVOCDetectionConverter
 from .sample_converter import SampleConverter
 from .wider import WiderFormatConverter
 from .detection_opencv_storage import DetectionOpenCVStorageFormatConverter
-from .lfw import FaceReidPairwiseConverter
-from .vgg_face_regression import LandmarksRegression
+from .lfw import LFWConverter
+from .vgg_face_regression import VGGFaceRegressionConverter
 from .super_resolution_converter import SRConverter
 from .imagenet import ImageNetFormatConverter
 from .icdar import ICDAR13RecognitionDatasetConverter, ICDAR15DetectionDatasetConverter
 from .ms_coco import MSCocoDetectionConverter, MSCocoKeypointsConverter
 from .cityscapes import CityscapesConverter
-from .ncf_converter import NCFConverter
-from .brats import BratsConverter
+from .ncf_converter import MovieLensConverter
+from .brats import BratsConverter, BratsNumpyConverter
+from .cifar10 import Cifar10FormatConverter
+from .mnist import MNISTCSVFormatConverter
 
 __all__ = [
     'BaseFormatConverter',
     'make_subset',
     'save_annotation',
+    'analyze_dataset',
 
     'ImageNetFormatConverter',
     'Market1501Converter',
@@ -43,13 +47,17 @@ __all__ = [
     'WiderFormatConverter',
     'MARSConverter',
     'DetectionOpenCVStorageFormatConverter',
-    'FaceReidPairwiseConverter',
+    'LFWConverter',
+    'VGGFaceRegressionConverter',
     'SRConverter',
     'ICDAR13RecognitionDatasetConverter',
     'ICDAR15DetectionDatasetConverter',
     'MSCocoKeypointsConverter',
     'MSCocoDetectionConverter',
     'CityscapesConverter',
-    'NCFConverter',
-    'BratsConverter'
+    'MovieLensConverter',
+    'BratsConverter',
+    'BratsNumpyConverter',
+    'Cifar10FormatConverter',
+    'MNISTCSVFormatConverter'
 ]

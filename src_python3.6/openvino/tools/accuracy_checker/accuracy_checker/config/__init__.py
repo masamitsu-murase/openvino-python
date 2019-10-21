@@ -22,6 +22,8 @@ from .config_validator import (
     PathField,
     NumberField,
     DictField,
+    InputField,
+    ListInputsField,
 
     BaseValidator,
     ConfigError,
@@ -39,6 +41,8 @@ __all__ = [
     'PathField',
     'NumberField',
     'DictField',
+    'InputField',
+    'ListInputsField',
 
     'BaseValidator',
     'ConfigError',

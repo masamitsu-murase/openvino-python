@@ -23,7 +23,7 @@ from copy import copy
 from functools import partial
 from pathlib import Path
 
-from ..utils import get_path, string_to_bool
+from ..utils import get_path
 
 
 class ConfigError(ValueError):
@@ -52,36 +52,39 @@ class BaseValidator:
 
         raise ConfigError(error_message.format(value, field_uri))
 
-
 class _ExtraArgumentBehaviour(enum.Enum):
     WARN = 'warn'
     IGNORE = 'ignore'
     ERROR = 'error'
 
-
 def _is_dict_like(entry):
     return hasattr(entry, '__iter__') and hasattr(entry, '__getitem__')
-
 
 class ConfigValidator(BaseValidator):
     WARN_ON_EXTRA_ARGUMENT = _ExtraArgumentBehaviour.WARN
     ERROR_ON_EXTRA_ARGUMENT = _ExtraArgumentBehaviour.ERROR
     IGNORE_ON_EXTRA_ARGUMENT = _ExtraArgumentBehaviour.IGNORE
+    acceptable_unknown_options = ['connector']
 
-    def __init__(self, config_uri, on_extra_argument=WARN_ON_EXTRA_ARGUMENT, **kwargs):
+    def __init__(self, config_uri, on_extra_argument=WARN_ON_EXTRA_ARGUMENT, fields=None, **kwargs):
         super().__init__(**kwargs)
         self.on_extra_argument = on_extra_argument
 
         self.fields = OrderedDict()
         self.field_uri = config_uri
-        for name in dir(self):
-            value = getattr(self, name)
-            if not isinstance(value, BaseField):
-                continue
 
-            field_copy = copy(value)
-            field_copy.field_uri = "{}.{}".format(config_uri, name)
-            self.fields[name] = field_copy
+        if fields:
+            for name in fields.keys():
+                self.fields[name] = fields[name]
+        else:
+            for name in dir(self):
+                value = getattr(self, name)
+                if not isinstance(value, BaseField):
+                    continue
+
+                field_copy = copy(value)
+                field_copy.field_uri = "{}.{}".format(config_uri, name)
+                self.fields[name] = field_copy
 
     def validate(self, entry, field_uri=None):
         super().validate(entry, field_uri)
@@ -91,13 +94,16 @@ class ConfigValidator(BaseValidator):
 
         extra_arguments = []
         for key in entry:
-            if key not in self.fields:
+            if key not in self.fields and key not in self.acceptable_unknown_options:
                 extra_arguments.append(key)
+                continue
+
+            if key in self.acceptable_unknown_options:
                 continue
 
             self.fields[key].validate(entry[key])
 
-        required_fields = set(name for name, value in self.fields.items() if not value.optional)
+        required_fields = set(name for name, value in self.fields.items() if value.required())
         missing_arguments = required_fields.difference(entry)
 
         if missing_arguments:
@@ -127,27 +133,42 @@ class ConfigValidator(BaseValidator):
 
 
 class BaseField(BaseValidator):
-    def __init__(self, optional=False, allow_none=False, **kwargs):
+    def __init__(self, optional=False, description=None, default=None, **kwargs):
         super().__init__(**kwargs)
         self.optional = optional
-        self.allow_none = allow_none
+        self.description = description
+        self.default = default
 
     def validate(self, entry, field_uri=None):
         super().validate(entry, field_uri)
         field_uri = field_uri or self.field_uri
-        if not self.allow_none and entry is None:
+        if self.required() and entry is None:
             raise ConfigError("{} is not allowed to be None".format(field_uri))
 
     @property
     def type(self):
         return str
 
+    def required(self):
+        return not self.optional and self.default is None
+
+    def parameters(self):
+        parameters_dict = {}
+        for key, _ in self.__dict__.items():
+            if not key.startswith('_') and hasattr(self, key) and not hasattr(BaseValidator(), key):
+                if isinstance(self.__dict__[key], BaseField):
+                    parameters_dict[key] = self.__dict__[key].parameters()
+                else:
+                    parameters_dict[key] = self.__dict__[key]
+            parameters_dict['type'] = type(self.type()).__name__
+        return parameters_dict
 
 class StringField(BaseField):
-    def __init__(self, choices=None, regex=None, case_sensitive=False, **kwargs):
+    def __init__(self, choices=None, regex=None, case_sensitive=False, allow_own_choice=False, **kwargs):
         super().__init__(**kwargs)
         self.choices = choices if case_sensitive or not choices else list(map(str.lower, choices))
-        self.regex = re.compile(regex, flags=re.IGNORECASE if not case_sensitive else 0) if regex else None
+        self.allow_own_choice = allow_own_choice
+        self._regex = re.compile(regex, flags=re.IGNORECASE if not case_sensitive else 0) if regex else None
         self.case_sensitive = case_sensitive
 
     def validate(self, entry, field_uri=None):
@@ -164,17 +185,16 @@ class StringField(BaseField):
         if not self.case_sensitive:
             entry = entry.lower()
 
-        if self.choices and entry not in self.choices:
+        if self.choices and entry not in self.choices and not self.allow_own_choice:
             reason = "unsupported option, expected one of: {}".format(', '.join(map(str, self.choices)))
             self.raise_error(source_entry, field_uri, reason)
 
-        if self.regex and not self.regex.match(entry):
+        if self._regex and not self._regex.match(entry):
             self.raise_error(source_entry, field_uri, reason=None)
 
     @property
     def type(self):
         return str
-
 
 class DictField(BaseField):
     def __init__(self, key_type=None, value_type=None, validate_keys=True, validate_values=True, allow_empty=True,
@@ -208,10 +228,10 @@ class DictField(BaseField):
                 uri = "{}.{}".format(field_uri, k)
 
                 self.value_type.validate(v, uri)
+
     @property
     def type(self):
         return dict
-
 
 class ListField(BaseField):
     def __init__(self, value_type=None, validate_values=True, allow_empty=True, **kwargs):
@@ -239,15 +259,45 @@ class ListField(BaseField):
     def type(self):
         return list
 
+class InputField(BaseField):
+    INPUTS_TYPES = ('CONST_INPUT', 'INPUT', 'IMAGE_INFO')
+    LAYOUT_TYPES = ['NCHW', 'NHWC', 'NCWH', 'NWHC']
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = StringField(description="Input name.")
+        self.input_type = StringField(choices=InputField.INPUTS_TYPES, description="Type name.")
+        self.value = BaseField(description="Input value.")
+        self.layout = StringField(optional=True, choices=InputField.LAYOUT_TYPES,
+                                  description="Layout: " + ', '.join(InputField.LAYOUT_TYPES))
+        self.shape = BaseField(optional=True, description="Input shape.")
+
+    def validate(self, entry, field_uri=None):
+        entry['optional'] = entry['type'] != 'CONST_INPUT'
+        super().validate(entry, field_uri)
+
+class ListInputsField(ListField):
+    def __init__(self, **kwargs):
+        super().__init__(allow_empty=False, value_type=InputField(description="Input type."), **kwargs)
+
+    def validate(self, entry, field_uri=None):
+        super().validate(entry, field_uri)
+        names_set = set()
+        for input_layer in entry:
+            input_name = input_layer['name']
+            if input_name not in names_set:
+                names_set.add(input_name)
+            else:
+                self.raise_error(entry, field_uri, '{} repeated name'.format(input_name))
 
 class NumberField(BaseField):
-    def __init__(self, floats=True, min_value=None, max_value=None, allow_inf=False, allow_nan=False, **kwargs):
+    def __init__(self, value_type=float, min_value=None, max_value=None, allow_inf=False, allow_nan=False, **kwargs):
         super().__init__(**kwargs)
-        self.floats = floats
+        self._value_type = value_type
         self.min = min_value
         self.max = max_value
-        self.allow_inf = allow_inf
-        self.allow_nan = allow_nan
+        self._allow_inf = allow_inf
+        self._allow_nan = allow_nan
 
     def validate(self, entry, field_uri=None):
         super().validate(entry, field_uri)
@@ -255,7 +305,7 @@ class NumberField(BaseField):
             return
 
         field_uri = field_uri or self.field_uri
-        if not self.floats and isinstance(entry, float):
+        if self.type != float and isinstance(entry, float):
             raise ConfigError("{} is expected to be int".format(field_uri))
         if not isinstance(entry, int) and not isinstance(entry, float):
             raise ConfigError("{} is expected to be number".format(field_uri))
@@ -267,20 +317,20 @@ class NumberField(BaseField):
             reason = "value is greater than maximal allowed - {}".format(self.max)
             self.raise_error(entry, field_uri, reason)
 
-        if math.isinf(entry) and not self.allow_inf:
+        if math.isinf(entry) and not self._allow_inf:
             self.raise_error(entry, field_uri, "value is infinity")
-        if math.isnan(entry) and not self.allow_nan:
+        if math.isnan(entry) and not self._allow_nan:
             self.raise_error(entry, field_uri, "value is NaN")
 
     @property
     def type(self):
-        return float if self.floats else int
-
+        return self._value_type
 
 class PathField(BaseField):
-    def __init__(self, is_directory=False, **kwargs):
+    def __init__(self, is_directory=False, check_exists=True, **kwargs):
         super().__init__(**kwargs)
         self.is_directory = is_directory
+        self.check_exists = check_exists
 
     def validate(self, entry, field_uri=None):
         super().validate(entry, field_uri)
@@ -289,7 +339,7 @@ class PathField(BaseField):
 
         field_uri = field_uri or self.field_uri
         try:
-            get_path(entry, self.is_directory)
+            get_path(entry, self.is_directory, self.check_exists)
         except TypeError:
             self.raise_error(entry, field_uri, "values is expected to be path-like")
         except FileNotFoundError:
@@ -303,8 +353,10 @@ class PathField(BaseField):
     def type(self):
         return Path
 
-
 class BoolField(BaseField):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
     def validate(self, entry, field_uri=None):
         super().validate(entry, field_uri)
         if entry is None:
@@ -316,8 +368,7 @@ class BoolField(BaseField):
 
     @property
     def type(self):
-        return string_to_bool
-
+        return bool
 
 def _get_field_type(key_type):
     if not isinstance(key_type, BaseField):
@@ -329,8 +380,8 @@ def _get_field_type(key_type):
 
 
 _TYPE_TO_FIELD_CLASS = {
-    int: partial(NumberField, floats=False),
-    float: partial(NumberField, floats=True),
+    int: partial(NumberField, value_type=int),
+    float: partial(NumberField, value_type=float),
     dict: partial(DictField, validate_keys=False, validate_values=False),
     list: partial(ListField, validate_values=False),
     Path: PathField,

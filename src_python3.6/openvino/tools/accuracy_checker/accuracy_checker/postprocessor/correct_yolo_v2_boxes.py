@@ -15,10 +15,9 @@ limitations under the License.
 """
 
 from ..config import NumberField
-from .postprocessor import BasePostprocessorConfig, Postprocessor
+from .postprocessor import Postprocessor
 from ..representation import DetectionPrediction, DetectionAnnotation
 from ..utils import get_size_from_config
-
 
 class CorrectYoloV2Boxes(Postprocessor):
     __provider__ = 'correct_yolo_v2_boxes'
@@ -26,16 +25,17 @@ class CorrectYoloV2Boxes(Postprocessor):
     prediction_types = (DetectionPrediction, )
     annotation_types = (DetectionAnnotation, )
 
-    def validate_config(self):
-        class _CorrectYoloV2BoxesConfigValidator(BasePostprocessorConfig):
-            dst_width = NumberField(floats=False, optional=True, min_value=1)
-            dst_height = NumberField(floats=False, optional=True, min_value=1)
-            size = NumberField(floats=False, optional=True, min_value=1)
-
-        clip_config_validator = _CorrectYoloV2BoxesConfigValidator(
-            self.__provider__, on_extra_argument=_CorrectYoloV2BoxesConfigValidator.ERROR_ON_EXTRA_ARGUMENT
-        )
-        clip_config_validator.validate(self.config)
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'dst_width': NumberField(value_type=int, optional=True, min_value=1, description="Destination width."),
+            'dst_height': NumberField(value_type=int, optional=True, min_value=1, description="Destination height."),
+            'size': NumberField(
+                value_type=int, optional=True, min_value=1, description="Destination size for both dimentions."
+            )
+        })
+        return parameters
 
     def configure(self):
         self.dst_height, self.dst_width = get_size_from_config(self.config)

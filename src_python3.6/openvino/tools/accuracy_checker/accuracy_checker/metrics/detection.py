@@ -24,34 +24,60 @@ import numpy as np
 from ..utils import finalize_metric_result
 from .overlap import Overlap, IOA
 from ..config import BoolField, NumberField, StringField
-from ..representation import DetectionAnnotation, DetectionPrediction
-from .metric import BaseMetricConfig, FullDatasetEvaluationMetric
-
+from ..representation import (
+    DetectionAnnotation, DetectionPrediction,
+    ActionDetectionPrediction, ActionDetectionAnnotation
+)
+from .metric import Metric, FullDatasetEvaluationMetric
 
 class APIntegralType(enum.Enum):
     voc_11_point = '11point'
     voc_max = 'max'
 
+class BaseDetectionMetricMixin(Metric):
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'overlap_threshold': NumberField(
+                value_type=float, min_value=0.0, max_value=1.0, default=0.5,
+                description="Minimal value for intersection over union that allows "
+                            "to make decision that prediction bounding box is true positive."
+            ),
+            'ignore_difficult': BoolField(
+                default=True, description="Allows to ignore difficult annotation boxes in metric calculation. "
+                                          "In this case, difficult boxes are filtered annotations "
+                                          "from postprocessing stage."
+            ),
+            'include_boundaries': BoolField(
+                default=True, description="allows include boundaries in overlap calculation process. "
+                                          "If it is True then width and  height of box is calculated by max - min + 1."
+            ),
+            'distinct_conf': BoolField(
+                default=False, description="Select only values for distinct confidences."
+            ),
+            'allow_multiple_matches_per_ignored': BoolField(
+                default=False, description="Allows multiple matches per ignored."),
+            'overlap_method': StringField(choices=['iou', 'ioa'], default='iou'),
+            'use_filtered_tp': BoolField(
+                default=False, description="If is True then ignored object are counted during evaluation."
+            ),
+            'label_map': StringField(
+                optional=True, default='label_map', description='label_map field name in dataset_meta'
+            )
 
-class BaseDetectionMetricConfig(BaseMetricConfig):
-    overlap_threshold = NumberField(min_value=0, max_value=1, optional=True)
-    ignore_difficult = BoolField(optional=True)
-    include_boundaries = BoolField(optional=True)
-    distinct_conf = BoolField(optional=True)
-    allow_multiple_matches_per_ignored = BoolField(optional=True)
-    overlap_method = StringField(optional=True, choices=Overlap.providers)
-    use_filtered_tp = BoolField(optional=True)
+        })
 
+        return parameters
 
-class BaseDetectionMetricMixin:
     def configure(self):
-        self.overlap_threshold = self.config.get('overlap_threshold', 0.5)
-        self.ignore_difficult = self.config.get('ignore_difficult', True)
-        self.include_boundaries = self.config.get('include_boundaries', True)
-        self.distinct_conf = self.config.get('distinct_conf', False)
-        self.allow_multiple_matches_per_ignored = self.config.get('allow_multiple_matches_per_ignored', False)
-        self.overlap_method = Overlap.provide(self.config.get('overlap', 'iou'), self.include_boundaries)
-        self.use_filtered_tp = self.config.get('use_filtered_tp', False)
+        self.overlap_threshold = self.get_value_from_config('overlap_threshold')
+        self.ignore_difficult = self.get_value_from_config('ignore_difficult')
+        self.include_boundaries = self.get_value_from_config('include_boundaries')
+        self.distinct_conf = self.get_value_from_config('distinct_conf')
+        self.allow_multiple_matches_per_ignored = self.get_value_from_config('allow_multiple_matches_per_ignored')
+        self.overlap_method = Overlap.provide(self.get_value_from_config('overlap_method'), self.include_boundaries)
+        self.use_filtered_tp = self.get_value_from_config('use_filtered_tp')
 
         label_map = self.config.get('label_map', 'label_map')
         labels = self.dataset.metadata.get(label_map, {})
@@ -96,6 +122,9 @@ class BaseDetectionMetricMixin:
 
         return labels_stat
 
+    def evaluate(self, annotations, predictions):
+        pass
+
 
 class DetectionMAP(BaseDetectionMetricMixin, FullDatasetEvaluationMetric):
     """
@@ -104,21 +133,26 @@ class DetectionMAP(BaseDetectionMetricMixin, FullDatasetEvaluationMetric):
 
     __provider__ = 'map'
 
-    annotation_types = (DetectionAnnotation, )
-    prediction_types = (DetectionPrediction, )
+    annotation_types = (DetectionAnnotation, ActionDetectionAnnotation)
+    prediction_types = (DetectionPrediction, ActionDetectionPrediction)
 
-    def validate_config(self):
-        class _MAPConfigValidator(BaseDetectionMetricConfig):
-            integral = StringField(choices=[e.value for e in APIntegralType], optional=True)
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'integral':
+                StringField(
+                    choices=[e.value for e in APIntegralType], default=APIntegralType.voc_max.value, optional=True,
+                    description="Integral type for average precision calculation. "
+                                "Pascal VOC 11point and max approaches are available."
+                )
+        })
 
-        map_config_validator = _MAPConfigValidator(
-            self.__provider__, on_extra_argument=_MAPConfigValidator.ERROR_ON_EXTRA_ARGUMENT
-        )
-        map_config_validator.validate(self.config)
+        return parameters
 
     def configure(self):
         super().configure()
-        self.integral = APIntegralType(self.config.get('integral', APIntegralType.voc_max))
+        self.integral = APIntegralType(self.get_value_from_config('integral'))
 
     def evaluate(self, annotations, predictions):
         valid_labels = get_valid_labels(self.labels, self.dataset.metadata.get('background_label'))
@@ -149,21 +183,20 @@ class MissRate(BaseDetectionMetricMixin, FullDatasetEvaluationMetric):
 
     __provider__ = 'miss_rate'
 
-    annotation_types = (DetectionAnnotation, )
-    prediction_types = (DetectionPrediction, )
+    annotation_types = (DetectionAnnotation, ActionDetectionAnnotation)
+    prediction_types = (DetectionPrediction, ActionDetectionPrediction)
 
-    def validate_config(self):
-        class _MRConfigValidator(BaseDetectionMetricConfig):
-            fppi_level = NumberField(min_value=0, max_value=1)
-
-        nms_config_validator = _MRConfigValidator(
-            self.__provider__, on_extra_argument=_MRConfigValidator.ERROR_ON_EXTRA_ARGUMENT
-        )
-        nms_config_validator.validate(self.config)
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'fppi_level' : NumberField(min_value=0, max_value=1, description="False Positive Per Image level.")
+        })
+        return parameters
 
     def configure(self):
         super().configure()
-        self.fppi_level = self.config.get('fppi_level')
+        self.fppi_level = self.get_value_from_config('fppi_level')
 
     def evaluate(self, annotations, predictions):
         valid_labels = get_valid_labels(self.labels, self.dataset.metadata.get('background_label'))
@@ -189,14 +222,8 @@ class Recall(BaseDetectionMetricMixin, FullDatasetEvaluationMetric):
 
     __provider__ = 'recall'
 
-    annotation_types = (DetectionAnnotation, )
-    prediction_types = (DetectionPrediction, )
-
-    def validate_config(self):
-        recall_config_validator = BaseDetectionMetricConfig(
-            self.__provider__, on_extra_argument=BaseDetectionMetricConfig.ERROR_ON_EXTRA_ARGUMENT
-        )
-        recall_config_validator.validate(self.config)
+    annotation_types = (DetectionAnnotation, ActionDetectionAnnotation)
+    prediction_types = (DetectionPrediction, ActionDetectionPrediction)
 
     def evaluate(self, annotations, predictions):
         valid_labels = get_valid_labels(self.labels, self.dataset.metadata.get('background_label'))
@@ -222,38 +249,48 @@ class Recall(BaseDetectionMetricMixin, FullDatasetEvaluationMetric):
 class DetectionAccuracyMetric(BaseDetectionMetricMixin, FullDatasetEvaluationMetric):
     __provider__ = 'detection_accuracy'
 
-    annotation_types = (DetectionAnnotation, )
-    prediction_types = (DetectionPrediction, )
+    annotation_types = (DetectionAnnotation, ActionDetectionAnnotation)
+    prediction_types = (DetectionPrediction, ActionDetectionPrediction)
 
-    def validate_config(self):
-        class _DAConfigValidator(BaseDetectionMetricConfig):
-            use_normalization = BoolField(optional=True)
-
-        da_config_validator = _DAConfigValidator(
-            self.__provider__, on_extra_argument=_DAConfigValidator.ERROR_ON_EXTRA_ARGUMENT
-        )
-        da_config_validator.validate(self.config)
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'use_normalization': BoolField(
+                default=False, optional=True, description="Allows to normalize confusion_matrix for metric calculation."
+            ),
+            'ignore_label': NumberField(
+                optional=True, value_type=int, min_value=0, description="Ignore label ID."
+            )
+        })
+        return parameters
 
     def configure(self):
         super().configure()
-        self.use_normalization = self.config.get('use_normalization', False)
+
+        self.use_normalization = self.get_value_from_config('use_normalization')
+        self.ignore_label = self.get_value_from_config('ignore_label')
 
     def evaluate(self, annotations, predictions):
-        all_matches, _, _ = match_detections_class_agnostic(
+        all_matches = match_detections_class_agnostic(
             predictions, annotations, self.overlap_threshold, self.overlap_method
         )
-        cm = confusion_matrix(all_matches, predictions, annotations, len(self.labels))
+        cm = confusion_matrix(all_matches, predictions, annotations, len(self.labels), self.ignore_label)
         if self.use_normalization:
             return np.mean(normalize_confusion_matrix(cm).diagonal())
 
         return float(np.sum(cm.diagonal())) / float(np.maximum(1, np.sum(cm)))
 
 
-def confusion_matrix(all_matched_ids, predicted_data, gt_data, num_classes):
+def confusion_matrix(all_matched_ids, predicted_data, gt_data, num_classes, ignore_label=None):
     out_cm = np.zeros([num_classes, num_classes], dtype=np.int32)
     for gt, prediction in zip(gt_data, predicted_data):
         for match_pair in all_matched_ids[gt.identifier]:
             gt_label = int(gt.labels[match_pair[0]])
+
+            if ignore_label and gt_label == ignore_label:
+                continue
+
             pred_label = int(prediction.labels[match_pair[1]])
             out_cm[gt_label, pred_label] += 1
 
@@ -275,31 +312,44 @@ def match_detections_class_agnostic(predicted_data, gt_data, min_iou, overlap_me
         predicted_bboxes = np.stack(
             (prediction.x_mins, prediction.y_mins, prediction.x_maxs, prediction.y_maxs), axis=-1
         )
+        predicted_scores = prediction.scores
 
-        total_gt_bbox_num += len(gt_bboxes)
+        gt_bboxes_num = len(gt_bboxes)
+        predicted_bboxes_num = len(predicted_bboxes)
 
-        similarity_matrix = calculate_similarity_matrix(gt_bboxes, predicted_bboxes, overlap_method)
+        sorted_ind = np.argsort(-predicted_scores)
+        predicted_bboxes = predicted_bboxes[sorted_ind]
+        predicted_original_ids = np.arange(predicted_bboxes_num)[sorted_ind]
+
+        similarity_matrix = calculate_similarity_matrix(predicted_bboxes, gt_bboxes, overlap_method)
 
         matches = []
-        for _ in gt_bboxes:
-            best_match_pos = np.unravel_index(similarity_matrix.argmax(), similarity_matrix.shape)
-            best_match_value = similarity_matrix[best_match_pos]
+        visited_gt = np.zeros(gt_bboxes_num, dtype=np.bool)
+        for predicted_id in range(predicted_bboxes_num):
+            best_overlap = 0.0
+            best_gt_id = -1
+            for gt_id in range(gt_bboxes_num):
+                if visited_gt[gt_id]:
+                    continue
 
-            if best_match_value <= min_iou:
-                break
+                overlap_value = similarity_matrix[predicted_id, gt_id]
+                if overlap_value > best_overlap:
+                    best_overlap = overlap_value
+                    best_gt_id = gt_id
 
-            gt_id = best_match_pos[0]
-            predicted_id = best_match_pos[1]
+            if best_gt_id >= 0 and best_overlap > min_iou:
+                visited_gt[best_gt_id] = True
 
-            similarity_matrix[gt_id, :] = 0.0
-            similarity_matrix[:, predicted_id] = 0.0
-
-            matches.append((gt_id, predicted_id))
-            matched_gt_bbox_num += 1
+                matches.append((best_gt_id, predicted_original_ids[predicted_id]))
+                if len(matches) >= gt_bboxes_num:
+                    break
 
         all_matches[gt.identifier] = matches
 
-    return all_matches, total_gt_bbox_num, matched_gt_bbox_num
+        total_gt_bbox_num += gt_bboxes_num
+        matched_gt_bbox_num += len(matches)
+
+    return all_matches
 
 
 def calculate_similarity_matrix(set_a, set_b, overlap):
@@ -456,8 +506,19 @@ def _prepare_prediction_boxes(label, predictions, ignore_difficult):
     prediction_boxes = []
     indexes = []
     difficult_boxes = []
+    all_label_indices = []
+    index_counter = 0
+
     for i, prediction in enumerate(predictions):
         idx = prediction.labels == label
+
+        label_indices = [
+            det + index_counter
+            for det, lab in enumerate(prediction.labels)
+            if lab == label
+        ]
+        all_label_indices.extend(label_indices)
+        index_counter += len(prediction.labels)
 
         prediction_images.append(np.full(prediction.labels[idx].shape, i))
         prediction_boxes.append(np.c_[
@@ -478,6 +539,7 @@ def _prepare_prediction_boxes(label, predictions, ignore_difficult):
     sorted_order = np.argsort(-prediction_boxes[:, 0])
     prediction_boxes = prediction_boxes[sorted_order]
     prediction_images = np.concatenate(prediction_images)[sorted_order]
+    difficult_boxes = difficult_boxes[all_label_indices]
     difficult_boxes = difficult_boxes[sorted_order]
 
     return prediction_boxes, prediction_images, difficult_boxes

@@ -68,7 +68,7 @@ More detailed information about calculation segmentation metrics you can find [h
   * `first_match_break` - break on first matched gallery sample.
 * `reid_map` - Mean Average Precision score for object reidentification. Supported representations: `ReIdentificationAnnotation`, `ReIdentificationPrediction`.
   * `uninterpolated_auc` - should area under precision recall curve be computed using trapezoidal rule or directly.
-*  `pairwise_accuracy` - pairwise accuracy for object reidentification. Supported representations: `ReIdentificationClassificationAnnotation`, `ReIdentificationPrediction`.
+* `pairwise_accuracy` - pairwise accuracy for object reidentification. Supported representations: `ReIdentificationClassificationAnnotation`, `ReIdentificationPrediction`.
   * `min_score` - min score for determining that objects are different. You can provide value or use `train_median` value which will be calculated if annotations has training subset.
 * `pairwise_accuracy_subsets` - object reidentification pairwise accuracy with division dataset on test and train subsets for calculation mean score. Supported representations: `ReIdentificationClassificationAnnotation`, `ReIdentificationPrediction`.
   * `subset_number` - number of subsets for separating. 
@@ -91,10 +91,9 @@ More detailed information about calculation segmentation metrics you can find [h
 * `normed_error` - Normed Error for measurement the quality of landmarks' positions. Supported representations: `FacialLandmarksAnnotation`, `FacialLandmarksPrediction`.
   * `calculate_std` - allows calculation of standard deviation (default value: `False`)
   * `percentile` - calculate error rate for given percentile.
-* `per_point_regression` - Root Mean Squared Error for 2D points estimated results for each point independently. Supported representations: `PointRegressionAnnotation`, `PointRegressionPrediction`.
-  * `scaling_distance` - comma-separated list of 2 point indexes, distance between which will be used for scaling regression distances.
-* `average point error` - Root Mean Squared Error for 2D points estimated average results for all points. Supported representations: `PointRegressionAnnotation`, `PointRegressionPrediction`.
-  * `scaling_distance` - comma-separated list of 2 point indexes, distance between which will be used for scaling regression distances.
+* `psnr` - [Peak signal to noise ratio][psnr]. Supported representations: `SuperResolutionAnnotation`, `SuperResolutionPrediction`.
+  * `color_order` - the field specified which color order `BGR` or `RGB` will be used during metric calculation (Optional. Default value is RGB). 
+* `angle_error` - Mean angle error and Standard deviation of angle error for gaze estimation. Supported representations: `GazeVectorAnnotation`, `GazeVectorPrediction`.
 * `multi_accuracy` - accuracy for multilabel recognition task. Supported representations: `MultiLabelRecognitionAnnotation`, `MultiLabelRecognitionPrediction`.
   * `label_map` - the field in annotation metadata, which contains dataset label map.
   * `calculate_average` - allows calculation of average accuracy (default value: `True`).
@@ -117,11 +116,20 @@ More detailed information about calculation segmentation metrics you can find [h
 * `coco_recall` - MS COCO Average Recall metric for keypoints recognition and object detection tasks. Supported representations: `PoseEstimationAnnotation`, `PoseEstimationPrediction`, `DetectionAnnotation`, `DetectionPrediction`.
   * `max_detections` - max number of predicted results per image. If you have more predictions,the results with minimal confidence will be ignored.
   * `threshold` - intersection over union threshold. You can specify one value or comma separated range of values. This parameter supports precomputed values for standard COCO thresholds (`.5`, `.75`, `.5:.05:.95`).
-* `angle_error` - Mean angle error and Standard deviation of angle error for gaze estimation. Supported representations: `GazeVectorAnnotation`, `GazeVectorPrediction`.
-  
+* `hit_ratio` - metric for recommendation system evaluation. Supported representations: `HitRatioAnnotation`, `HitRatioPrediction`.
+  * `top_k` - definition of number elements in rank list (optional, default 10).
+* `ndcg` - [Normalized Discounted Cumulative Gain][ndcg]. Supported representations: `HitRatioAnnotation`, `HitRatioPrediction`.
+  * `top_k` - definition of number elements in rank list (optional, default 10).
+* `dice` - [Sørensen–Dice coefficient][dice_coefficient]. Supported representations: `BrainTumorSegmentationAnnotation, BrainTumorSegmentationPrediction`.
+* `dice_index` - [Sørensen–Dice coefficient][dice_coefficient]. Supported representations: `BrainTumorSegmentationAnnotation, BrainTumorSegmentationPrediction`. Supports result representation for multiple classes. Metric represents result for each class if `label_map` for used dataset is provided, otherwise it represents overall result. For `brats_numpy` converter file with labels set in `labels_file` tag. 
+  * `mean` - allows calculation mean value (default - `True`)
+  * `median` - allows calculation median value (default - `False`)
+
 [segmentation_article]: https://arxiv.org/pdf/1411.4038v2.pdf
 [mae]: https://en.wikipedia.org/wiki/Mean_absolute_error
 [mse]: https://en.wikipedia.org/wiki/Mean_squared_error
 [rmse]: https://en.wikipedia.org/wiki/Root-mean-square_deviation
 [f_score]: https://en.wikipedia.org/wiki/F1_score
 [psnr]: https://en.wikipedia.org/wiki/Peak_signal-to-noise_ratio
+[ndcg]: https://en.wikipedia.org/wiki/Discounted_cumulative_gain
+[dice_coefficient]: https://en.wikipedia.org/wiki/S%C3%B8rensen%E2%80%93Dice_coefficient

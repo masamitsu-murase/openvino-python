@@ -13,35 +13,45 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
+
 import numpy as np
 from ..adapters import Adapter
 from ..representation import SegmentationPrediction, BrainTumorSegmentationPrediction
-
+from ..config import ConfigValidator, BoolField
 
 class SegmentationAdapter(Adapter):
     __provider__ = 'segmentation'
+    prediction_types = (SegmentationPrediction, )
+
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'make_argmax' : BoolField(optional=True, default=False,
+                                      description="Allows to apply argmax operation to output values.")
+        })
+        return parameters
+
+    def validate_config(self):
+        super().validate_config(on_extra_argument=ConfigValidator.IGNORE_ON_EXTRA_ARGUMENT)
+
+    def configure(self):
+        self.make_argmax = self.launcher_config.get('make_argmax', False)
 
     def process(self, raw, identifiers=None, frame_meta=None):
         result = []
         frame_meta = frame_meta or [] * len(identifiers)
         raw_outputs = self._extract_predictions(raw, frame_meta)
         for identifier, output in zip(identifiers, raw_outputs[self.output_blob]):
+            if self.make_argmax:
+                output = np.argmax(output, axis=0)
             result.append(SegmentationPrediction(identifier, output))
 
         return result
 
     def _extract_predictions(self, outputs_list, meta):
         if not 'tiles_shape' in (meta[-1] or {}):
-            new_raw = {}
-            for out in outputs_list:
-                for key, val in out.items():
-                    out_previous = new_raw.get(key, [])
-                    out_previous.append(val)
-                    new_raw[key] = out_previous
-
-            for k in new_raw:
-                new_raw[k] = [new_raw[k]]
-            return  new_raw
+            return outputs_list[0]
         tiles_shapes = [meta['tiles_shape'] for meta in meta]
         restore_output = []
         offset = 0
@@ -60,6 +70,7 @@ class SegmentationAdapter(Adapter):
 
 class BrainTumorSegmentationAdapter(Adapter):
     __provider__ = 'brain_tumor_segmentation'
+    prediction_types = (BrainTumorSegmentationPrediction, )
 
     def process(self, raw, identifiers=None, frame_meta=None):
         result = []
@@ -72,7 +83,7 @@ class BrainTumorSegmentationAdapter(Adapter):
 
     def _extract_predictions(self, outputs_list, meta):
         if not (meta[-1] or {}).get('multi_infer', False):
-           return outputs_list[0]
+            return outputs_list[0]
 
         output_keys = list(outputs_list[0].keys())
         output_map = {}

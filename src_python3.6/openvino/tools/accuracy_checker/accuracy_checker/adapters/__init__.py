@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from .adapter import Adapter, AdapterField
+from .adapter import Adapter, AdapterField, create_adapter
 
 from .action_recognition import ActionDetection
 from .text_detection import TextDetectionAdapter, LPRAdapter, BeamSearchDecoder
@@ -29,7 +29,9 @@ from .attributes_recognition import (
 )
 
 from .reidentification import ReidAdapter
-from .detection import TinyYOLOv1Adapter, SSDAdapter, FacePersonAdapter, YoloV2Adapter, YoloV3Adapter
+from .detection import (
+    TinyYOLOv1Adapter, SSDAdapter, FacePersonAdapter, YoloV2Adapter, YoloV3Adapter, TFObjectDetectionAPIAdapter
+)
 from .classification import ClassificationAdapter
 from .segmentation import SegmentationAdapter, BrainTumorSegmentationAdapter
 from .pose_estimation import HumanPoseAdapter
@@ -38,9 +40,12 @@ from .dummy_adapters import XML2DetectionAdapter
 
 from .hit_ratio import HitRatioAdapter
 
+from .mask_rcnn import MaskRCNNAdapter
+
 __all__ = [
     'Adapter',
     'AdapterField',
+    'create_adapter',
 
     'XML2DetectionAdapter',
 
@@ -51,6 +56,7 @@ __all__ = [
     'YoloV2Adapter',
     'YoloV3Adapter',
     'FacePersonAdapter',
+    'TFObjectDetectionAPIAdapter',
 
     'SegmentationAdapter',
     'BrainTumorSegmentationAdapter',
@@ -75,5 +81,7 @@ __all__ = [
 
     'ActionDetection',
 
-    'HitRatioAdapter'
+    'HitRatioAdapter',
+
+    'MaskRCNNAdapter'
 ]

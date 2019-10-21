@@ -16,8 +16,7 @@ limitations under the License.
 
 from ..config import BoolField, NumberField
 from ..representation import DetectionPrediction, DetectionAnnotation
-from .postprocessor import PostprocessorWithSpecificTargets, PostprocessorWithTargetsConfigValidator
-
+from .postprocessor import PostprocessorWithSpecificTargets
 
 class ClipBoxes(PostprocessorWithSpecificTargets):
     __provider__ = 'clip_boxes'
@@ -25,24 +24,32 @@ class ClipBoxes(PostprocessorWithSpecificTargets):
     annotation_types = (DetectionAnnotation, )
     prediction_types = (DetectionPrediction, )
 
-    def validate_config(self):
-        class _ClipConfigValidator(PostprocessorWithTargetsConfigValidator):
-            dst_width = NumberField(floats=False, optional=True, min_value=1)
-            dst_height = NumberField(floats=False, optional=True, min_value=1)
-            size = NumberField(floats=False, optional=True, min_value=1)
-            boxes_normalized = BoolField(optional=True)
-
-        clip_config_validator = _ClipConfigValidator(
-            self.__provider__, on_extra_argument=_ClipConfigValidator.ERROR_ON_EXTRA_ARGUMENT
-        )
-        clip_config_validator.validate(self.config)
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'dst_width': NumberField(
+                value_type=int, optional=True, min_value=1,
+                description="Destination width for box clipping."
+            ),
+            'dst_height': NumberField(
+                value_type=int, optional=True, min_value=1, description="Destination height for box clipping."),
+            'size': NumberField(
+                value_type=int, optional=True, min_value=1,
+                description="Destination size for box clipping for both dimensions."
+            ),
+            'boxes_normalized' : BoolField(
+                optional=True, default=False,
+                description="Flag which says that target bounding boxes are in normalized format."
+            )
+        })
+        return parameters
 
     def configure(self):
-        size = self.config.get('size')
-        self.dst_height = size or self.config.get('dst_height')
-        self.dst_width = size or self.config.get('dst_width')
-
-        self.boxes_normalized = self.config.get('boxes_normalized', False)
+        size = self.get_value_from_config('size')
+        self.dst_height = size or self.get_value_from_config('dst_height')
+        self.dst_width = size or self.get_value_from_config('dst_width')
+        self.boxes_normalized = self.get_value_from_config('boxes_normalized')
 
     def process_image(self, annotation, prediction):
         target_height = self.dst_height or self.image_size[0]

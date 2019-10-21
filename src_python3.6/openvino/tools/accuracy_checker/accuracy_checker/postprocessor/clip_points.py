@@ -1,4 +1,4 @@
-""""
+"""
 Copyright (c) 2019 Intel Corporation
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,14 +18,7 @@ import numpy as np
 from ..config import BoolField, NumberField
 from ..representation import TextDetectionAnnotation, TextDetectionPrediction
 from ..utils import get_size_from_config
-from .postprocessor import PostprocessorWithSpecificTargets, PostprocessorWithTargetsConfigValidator
-
-
-class ClipPointsConfigValidator(PostprocessorWithTargetsConfigValidator):
-    dst_width = NumberField(floats=False, optional=True, min_value=1)
-    dst_height = NumberField(floats=False, optional=True, min_value=1)
-    size = NumberField(floats=False, optional=True, min_value=1)
-    points_normalized = BoolField(optional=True)
+from .postprocessor import PostprocessorWithSpecificTargets
 
 
 class ClipPoints(PostprocessorWithSpecificTargets):
@@ -34,15 +27,30 @@ class ClipPoints(PostprocessorWithSpecificTargets):
     annotation_types = (TextDetectionAnnotation, )
     prediction_types = (TextDetectionPrediction, )
 
-    def validate_config(self):
-        clip_points_config_validator = ClipPointsConfigValidator(
-            self.__provider__, on_extra_argument=ClipPointsConfigValidator.ERROR_ON_EXTRA_ARGUMENT
-        )
-        clip_points_config_validator.validate(self.config)
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'dst_width': NumberField(
+                value_type=int, optional=True, min_value=1, description="Destination width for points clipping."
+            ),
+            'dst_height': NumberField(
+                value_type=int, optional=True, min_value=1, description="Destination height for points clipping."
+            ),
+            'size': NumberField(
+                value_type=int, optional=True, min_value=1,
+                description="Destination size for points clipping for both dimensions."
+            ),
+            'points_normalized': BoolField(
+                optional=True, default=False, description="Flags shows points are normalized or not."
+            )
+        })
+
+        return parameters
 
     def configure(self):
         self.dst_height, self.dst_width = get_size_from_config(self.config, allow_none=True)
-        self.points_normalized = self.config.get('points_normalized', False)
+        self.points_normalized = self.get_value_from_config('points_normalized')
 
     def process_image(self, annotation, prediction):
         target_width = self.dst_width or self.image_size[1] - 1

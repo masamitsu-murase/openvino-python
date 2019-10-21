@@ -21,24 +21,28 @@ from ..config import PathField
 from ..representation import ReIdentificationClassificationAnnotation
 from ..utils import read_txt
 
-from .format_converter import BaseFormatConverter, BaseFormatConverterConfig
+from .format_converter import BaseFormatConverter
 
 
-class FaceReidPairwiseConverterConfig(BaseFormatConverterConfig):
-    pairs_file = PathField()
-    train_file = PathField(optional=True)
-    landmarks_file = PathField(optional=True)
+class LFWConverter(BaseFormatConverter):
+    __provider__ = 'lfw'
+    annotation_types = (ReIdentificationClassificationAnnotation, )
 
+    @classmethod
+    def parameters(cls):
+        parameters = super().parameters()
+        parameters.update({
+            'pairs_file': PathField(description="Path to file with annotation positive and negative pairs."),
+            'landmarks_file': PathField(
+                optional=True, description="Path to file with facial landmarks coordinates for annotation images."
+            )
+        })
 
-class FaceReidPairwiseConverter(BaseFormatConverter):
-    __provider__ = 'face_reid_pairwise'
-
-    _config_validator_type = FaceReidPairwiseConverterConfig
+        return parameters
 
     def configure(self):
-        self.pairs_file = self.config['pairs_file']
-        self.train_file = self.config.get('train_file')
-        self.landmarks_file = self.config.get('landmarks_file')
+        self.pairs_file = self.get_value_from_config('pairs_file')
+        self.landmarks_file = self.get_value_from_config('landmarks_file')
 
     def convert(self):
         landmarks_map = {}
@@ -48,11 +52,8 @@ class FaceReidPairwiseConverter(BaseFormatConverter):
                 landmarks_map[landmark_line[0]] = [int(point) for point in landmark_line[1:]]
 
         test_annotations = self.prepare_annotation(self.pairs_file, True, landmarks_map)
-        if self.train_file:
-            train_annotations = self.prepare_annotation(self.train_file, True, landmarks_map)
-            test_annotations += train_annotations
 
-        return test_annotations, None
+        return test_annotations
 
     @staticmethod
     def get_image_name(person, image_id):
