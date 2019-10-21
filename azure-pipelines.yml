@@ -1,0 +1,77 @@
+
+trigger:
+  branches:
+    include:
+    - '*'
+  tags:
+    include:
+    - '*'
+pr:
+  branches:
+    include:
+    - '*'
+jobs:
+- job: windows
+  displayName: Windows
+  pool:
+    vmImage: 'vs2017-win2016'
+  strategy:
+    matrix:
+      python35:
+        python_version: 3.5.x
+      python36:
+        python_version: 3.6.x
+  steps:
+  - script: git config --global core.autoCRLF false
+    displayName: "Disable git autoCRLF"
+  - checkout: self
+    displayName: "Checkout"
+    fetchDepth: 50
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: $(python_version)
+      addToPath: true
+      architecture: 'x64'
+  - script: pip install -r requirements.txt
+    displayName: Install necessary libraries.
+  - script: cmd /c build.cmd
+    displayName: Build wheel
+  - task: CopyFiles@2
+    inputs:
+      contents: dist\*.whl
+      targetFolder: $(Build.ArtifactStagingDirectory)
+      flattenFolders: true
+      cleanTargetFolder: true
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathtoPublish: $(Build.ArtifactStagingDirectory)
+      artifactName: wheel
+      publishLocation: Container
+- job: github_release
+  displayName: GitHub Release
+  pool:
+    vmImage: 'vs2017-win2016'
+  dependsOn: windows
+  condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/'))
+  steps:
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      buildType: 'current'
+      artifactName: 'wheel'
+      targetPath: 'artifact'
+  - task: GitHubRelease@0
+    inputs:
+      gitHubConnection: 'github_connection'
+      repositoryName: '$(Build.Repository.Name)'
+      action: 'create'
+      target: '$(Build.SourceVersion)'
+      tagSource: 'auto'
+      tag: '$(Build.SourceBranchName)'
+      assets: 'artifact/**/*'
+      assetUploadMode: 'replace'
+      title: 'SampleTitle'
+      releaseNotesSource: 'input'
+      releaseNotes: 'Release Note'
+      isDraft: true
+      isPreRelease: true
+      addChangeLog: false
