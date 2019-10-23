@@ -43,6 +43,7 @@ version = "2019.3.334"
 
 setup(
     name="openvino_python",
+    license="Apache License 2.0",
     author="Masamitsu MURASE",
     author_email="masamitsu.murase@gmail.com",
     url="https://github.com/masamitsu-murase/openvino-python",
