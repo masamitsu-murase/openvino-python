@@ -11,7 +11,7 @@ This is an *unofficial* pip package for OpenVINO on **Windows**.
 Because this library is not registered in PyPI, you can install this library by using the following command:
 
 ```bash
-pip install # TODO
+pip install openvino-python --extra-index-url=https://masamitsu-murase.github.io/openvino-python/simple/
 ```
 
 ### Environment setting
