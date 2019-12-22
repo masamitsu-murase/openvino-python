@@ -4,32 +4,22 @@
 
 This is an *unofficial* pip package for OpenVINO on Windows.
 
+Please see [this page](https://masamitsu-murase.github.io/openvino-python/) for more details.
+
 ## How to use
-
-### Required files
-
-You need both [openvino-python](https://github.com/masamitsu-murase/openvino-python) and [openvino-rt](https://github.com/masamitsu-murase/openvino-rt) to use OpenVINO.  
-Please download them in "releases" pages, [openvino-python](https://github.com/masamitsu-murase/openvino-python/releases) and [openvino-rt](https://github.com/masamitsu-murase/openvino-rt/releases)
 
 ### Installation
 
-You can install `openvino-rt` using `pip` command as follows:
+Because this library is not registered in PyPI, you can install this library by using the following command:
 
 ```bash
-$ pip install openvino_rt-XXXX-py3-none-win_amd64.whl
+pip install openvino-python --extra-index-url=https://masamitsu-murase.github.io/openvino-python/simple/
 ```
-
-Then, install `openvino-python`.  
-
-```bash
-$ pip install openvino_python-XXXX-cp3x-cp3xm-win_amd64.whl
-```
-
-Because openvino-python depends on openvino-rt, you have to install openvino-rt first.
 
 ### Environment setting
 
-When you use `openvino` package in Python script, you have to set an environment variable, `PATH`, to include `(python-root)/Library/bin` directory.
+When you use `openvino` package in Python script, you have to set an environment variable, `PATH`, to include `(python-root)/Library/bin` directory.  
+If you use `venv`, you have to set an environment variable, `PATH`, to include `(venv-path)/Library/bin` directory.
 
 ## Note
 
