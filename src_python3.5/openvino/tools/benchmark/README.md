@@ -102,24 +102,39 @@ Options:
   -t TIME, --time TIME  Optional. Time in seconds to execute topology.
   -progress [PROGRESS]  Optional. Show progress bar (can affect performance
                         measurement). Default values is "False".
+  -shape SHAPE          Optional. Set shape for input. For example,
+                        "input1[1,3,224,224],input2[1,4]" or "[1,3,224,224]" in
+                        case of one input size.
   -nstreams NUMBER_STREAMS, --number_streams NUMBER_STREAMS
                        Optional. Number of streams to use for inference on the CPU/GPU in throughput mode
                        (for HETERO and MULTI device cases use format <device1>:<nstreams1>,<device2>:<nstreams2> or just <nstreams>).
                        Default value is determined automatically for a device. 
                        Please note that although the automatic selection usually provides a reasonable performance, 
                        it still may be non-optimal for some cases, especially for very small networks.
+  -enforcebf16 [ENFORCE_BFLOAT16], --enforce_bfloat16 [ENFORCE_BFLOAT16]
+                        Optional. Enforcing of floating point operations
+                        execution in bfloat16 precision where it is acceptable.
   -nthreads NUMBER_THREADS, --number_threads NUMBER_THREADS
                         Number of threads to use for inference on the CPU
                         (including HETERO  and MULTI cases).
-  -pin {YES,NO}, --infer_threads_pinning {YES,NO}
-                        Optional. Enable ("YES" is default value) or disable
-                        ("NO")CPU threads pinning for CPU-involved inference.
+  -pin {YES,NO,NUMA}, --infer_threads_pinning {YES,NO,NUMA}
+                        Optional. Enable threads->cores ('YES' is default
+                        value), threads->(NUMA)nodes ('NUMA') or completely
+                        disable ('NO')CPU threads pinning for CPU-involved
+                        inference.
   --exec_graph_path EXEC_GRAPH_PATH
                         Optional. Path to a file where to store executable
                         graph information serialized.
   -pc [PERF_COUNTS], --perf_counts [PERF_COUNTS]
                         Optional. Report performance counters.
-
+  -dump_config DUMP_CONFIG
+                        Optional. Path to JSON file to dump IE parameters,
+                        which were set by application.
+  -load_config LOAD_CONFIG
+                        Optional. Path to JSON file to load custom IE
+                        parameters. Please note, command line parameters have
+                        higher priority then parameters from configuration
+                        file.
 ```
 
 Running the application with the empty list of options yields the usage message given above and an error message.

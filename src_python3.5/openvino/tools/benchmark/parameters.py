@@ -1,9 +1,8 @@
 import sys,argparse
 from fnmatch import fnmatch
 
-from openvino.tools.benchmark.utils.constants import XML_EXTENSION_PATTERN
+from openvino.tools.benchmark.utils.constants import XML_EXTENSION_PATTERN, BLOB_EXTENSION_PATTERN
 from openvino.tools.benchmark.utils.utils import show_available_devices
-
 
 def str2bool(v):
     if v.lower() in ('yes', 'true', 't', 'y', '1'):
@@ -19,8 +18,8 @@ def validate_args(args):
         raise Exception("Number of iterations should be positive (invalid -niter option value)")
     if args.number_infer_requests and args.number_infer_requests < 0:
         raise Exception("Number of inference requests should be positive (invalid -nireq option value)")
-    if not fnmatch(args.path_to_model, XML_EXTENSION_PATTERN):
-        raise Exception('Path {} is not xml file.')
+    if not (fnmatch(args.path_to_model, XML_EXTENSION_PATTERN) or fnmatch(args.path_to_model, BLOB_EXTENSION_PATTERN)):
+        raise Exception('Path {} is not xml or blob file.')
 
 
 class print_help(argparse.Action):
@@ -38,7 +37,8 @@ def parse_args():
                       help='Optional. '
                            'Path to a folder with images and/or binaries or to specific image or binary file.')
     args.add_argument('-m', '--path_to_model', type=str, required=True,
-                      help='Required. Path to an .xml file with a trained model.')
+                      help='Required. Path to an .xml file with a trained model or '
+                           'to a .blob file with a trained compiled model.')
     args.add_argument('-d', '--target_device', type=str, required=False, default='CPU',
                       help='Optional. Specify a target device to infer on (the list of available devices is shown below). '
                            'Default value is CPU. Use \'-d HETERO:<comma separated devices list>\' format to specify HETERO plugin. '
@@ -57,7 +57,7 @@ def parse_args():
                            'If not specified, the number of iterations is calculated depending on a device.')
     args.add_argument('-nireq', '--number_infer_requests', type=int, required=False, default=None,
                       help='Optional. Number of infer requests. Default value is determined automatically for device.')
-    args.add_argument('-b', '--batch_size', type=int, required=False, default=None,
+    args.add_argument('-b', '--batch_size', type=int, required=False, default=0,
                       help='Optional. ' +
                            'Batch size value. ' +
                            'If not specified, the batch size value is determined from Intermediate Representation')
@@ -70,6 +70,9 @@ def parse_args():
     args.add_argument('-progress', type=str2bool, required=False, default=False, nargs='?', const=True,
                       help='Optional. '
                            'Show progress bar (can affect performance measurement). Default values is \'False\'.')
+    args.add_argument('-shape', type=str, required=False, default='',
+                      help='Optional. '
+                           'Set shape for input. For example, "input1[1,3,224,224],input2[1,4]" or "[1,3,224,224]" in case of one input size.')
     args.add_argument('-nstreams', '--number_streams', type=str, required=False, default=None,
                       help='Optional. Number of streams to use for inference on the CPU/GPU in throughput mode '
                            '(for HETERO and MULTI device cases use format <device1>:<nstreams1>,<device2>:<nstreams2> '
@@ -77,18 +80,19 @@ def parse_args():
                            'Default value is determined automatically for a device. Please note that although the automatic selection '
                            'usually provides a reasonable performance, it still may be non - optimal for some cases, especially for very small networks. '
                            'See samples README for more details.')
-
+    args.add_argument('-enforcebf16', '--enforce_bfloat16', type=str2bool, required=False, default=False, nargs='?', const=True,
+                      help='Optional. Enforcing of floating point operations execution in bfloat16 precision where it is acceptable.')
     args.add_argument('-nthreads', '--number_threads', type=int, required=False, default=None,
                       help='Number of threads to use for inference on the CPU '
                            '(including HETERO and MULTI cases).')
     args.add_argument('-pin', '--infer_threads_pinning', type=str, required=False, default='YES', choices=['YES', 'NO', 'NUMA'],
                       help='Optional. Enable  threads->cores (\'YES\' is default value), threads->(NUMA)nodes (\'NUMA\') or completely  disable (\'NO\')' 
                            'CPU threads pinning for CPU-involved inference.')
-    args.add_argument('--exec_graph_path', type=str, required=False,
+    args.add_argument('-exec_graph_path', '--exec_graph_path', type=str, required=False,
                       help='Optional. Path to a file where to store executable graph information serialized.')
     args.add_argument('-pc', '--perf_counts', type=str2bool, required=False, default=False, nargs='?', const=True,
                       help='Optional. Report performance counters.', )
-    args.add_argument('--report_type', type=str, required=False,
+    args.add_argument('-report_type', '--report_type', type=str, required=False,
                       choices=['no_counters', 'average_counters', 'detailed_counters'],
                       help="Optional. Enable collecting statistics report. \"no_counters\" report contains "
                            "configuration options specified, resulting FPS and latency. \"average_counters\" "
@@ -96,8 +100,13 @@ def parse_args():
                            "counters values for each layer from the network. \"detailed_counters\" report "
                            "extends \"average_counters\" report and additionally includes per-layer PM "
                            "counters and latency for each executed infer request.")
-    args.add_argument('--report_folder', type=str, required=False, default='',
+    args.add_argument('-report_folder', '--report_folder', type=str, required=False, default='',
                       help="Optional. Path to a folder where statistics report is stored.")
+    args.add_argument('-dump_config', type=str, required=False, default='',
+                      help="Optional. Path to JSON file to dump IE parameters, which were set by application.")
+    args.add_argument('-load_config', type=str, required=False, default='',
+                      help="Optional. Path to JSON file to load custom IE parameters."
+                           " Please note, command line parameters have higher priority then parameters from configuration file.")
     parsed_args = parser.parse_args()
 
     validate_args(parsed_args)
