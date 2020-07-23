@@ -39,7 +39,7 @@ def find_prebuilt_extensions(base_dir, ext_pattern):
     return extensions
 
 
-version = "2020.3.194"
+version = "2020.4.287"
 
 setup(
     name="openvino_python",

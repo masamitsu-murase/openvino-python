@@ -20,6 +20,8 @@ from .constants import DEVICE_DURATION_IN_SECS, UNKNOWN_DEVICE_TYPE, DEVICE_NIRE
 from .inputs_filling import is_image
 from .logging import logger
 
+import json
+import re
 
 def static_vars(**kwargs):
     def decorate(func):
@@ -35,10 +37,10 @@ def next_step(additional_info='', step_id=0):
     step_names = {
         1: "Parsing and validating input arguments",
         2: "Loading Inference Engine",
-        3: "Reading the Intermediate Representation network",
-        4: "Resizing network to match image sizes and given batch",
-        5: "Configuring input of the model",
-        6: "Setting device configuration",
+        3: "Setting device configuration",
+        4: "Reading the Intermediate Representation network",
+        5: "Resizing network to match image sizes and given batch",
+        6: "Configuring input of the model",
         7: "Loading the model to the device",
         8: "Setting optimal runtime parameters",
         9: "Creating infer requests and filling input blobs with images",
@@ -60,10 +62,10 @@ def next_step(additional_info='', step_id=0):
 
 
 def config_network_inputs(ie_network: IENetwork):
-    input_info = ie_network.inputs
+    input_info = ie_network.input_info
 
     for key in input_info.keys():
-        if is_image(input_info[key]):
+        if is_image(input_info[key].input_data):
             # Set the precision of input data provided by the user
             # Should be called before load of the network to the plugin
             input_info[key].precision = 'U8'
@@ -122,6 +124,8 @@ def get_nireq(target_device):
 
 
 def parse_devices(device_string):
+    if device_string in ['MULTI', 'HETERO']:
+        return list()
     devices = device_string
     if ':' in devices:
         devices = devices.partition(':')[2]
@@ -139,14 +143,14 @@ def parse_nstreams_value_per_device(devices, values_string):
         device_value_vec = device_value_string.split(':')
         if len(device_value_vec) == 2:
             device_name = device_value_vec[0]
-            nstreams = int(device_value_vec[1])
+            nstreams = device_value_vec[1]
             if device_name in devices:
                 result[device_name] = nstreams
             else:
                 raise Exception("Can't set nstreams value " + str(nstreams) +
                                 " for device '" + device_name + "'! Incorrect device name!");
         elif len(device_value_vec) == 1:
-            nstreams = int(device_value_vec[0])
+            nstreams = device_value_vec[0]
             for device in devices:
                 result[device] = nstreams
         elif not device_value_vec:
@@ -236,6 +240,42 @@ def get_command_line_arguments(argv):
         parameters.append((arg_name, arg_value))
     return parameters
 
+def update_shapes(shapes, shapes_string: str, inputs_info):
+    updated = False
+    matches = re.findall(r'(.*?)\[(.*?)\],?', shapes_string)
+    if matches:
+        for match in matches:
+            input_name = match[0]
+            parsed_shape = [int(dim) for dim in match[1].split(',')]
+            if input_name != '':
+                shapes[input_name] = parsed_shape
+                updated = True
+            else:
+                shapes.update({ k:parsed_shape for k in shapes.keys() })
+                updated = True
+                break
+    else:
+        raise Exception("Can't parse `shape` parameter: {}".format(shapes_string))
+    return updated
+
+def adjust_shapes_batch(shapes, batch_size: int, inputs_info):
+    updated = False
+    for name, data in inputs_info.items():
+        layout = data.input_data.layout
+        batch_index = layout.index('N') if 'N' in layout else -1
+        if batch_index != -1 and shapes[name][batch_index] != batch_size:
+            shapes[name][batch_index] = batch_size
+            updated = True
+    return updated
+
 def show_available_devices():
     ie = IECore()
     print("\nAvailable target devices:  ", ("  ".join(ie.available_devices)))
+
+def dump_config(filename, config):
+    with open(filename, 'w') as f:
+        json.dump(config, f, indent=4)
+
+def load_config(filename, config):
+    with open(filename) as f:
+        config.update(json.load(f))
