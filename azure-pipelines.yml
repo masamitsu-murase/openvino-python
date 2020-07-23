@@ -56,11 +56,12 @@ jobs:
   dependsOn: windows
   condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/'))
   steps:
-  - task: DownloadPipelineArtifact@2
+  - task: DownloadBuildArtifacts@0
     inputs:
       buildType: 'current'
+      downloadType: 'single'
       artifactName: 'wheel'
-      targetPath: 'artifact'
+      downloadPath: 'artifact'
   - task: GitHubRelease@0
     inputs:
       gitHubConnection: 'github_connection'
