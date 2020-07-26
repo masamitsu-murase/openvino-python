@@ -1,0 +1,4 @@
+--extra-index-url=https://masamitsu-murase.github.io/openvino-python/simple/
+openvino-python
+numpy
+onnxruntime
